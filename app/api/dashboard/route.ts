@@ -1,5 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
+import { getCachedAuthUsers } from "@/components/afiliados/actions/cache";
 
 export async function GET() {
   const supabase = await createClient();
@@ -58,6 +59,8 @@ export async function GET() {
   const conteoRaw = conteoRes.data || [];
   const sectores = sectoresRes.data || [];
   const sectorMap = new Map(sectores.map((s) => [s.id, s.nombre]));
+  const authUsers = await getCachedAuthUsers();
+  const emailMap = new Map(authUsers.map((u) => [u.id, u.email || ""]));
 
   const conteoMap = new Map<
     string,
@@ -83,7 +86,7 @@ export async function GET() {
 
   const usuarios = perfiles.map((p: any) => ({
     id: p.user_id,
-    email: "",
+    email: emailMap.get(p.user_id) || "",
     nombres: p.nombres,
     apellidos: p.apellidos,
     activo: p.activo,

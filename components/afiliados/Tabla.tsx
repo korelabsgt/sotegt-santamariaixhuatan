@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
   Pencil,
   Trash2,
@@ -12,36 +11,34 @@ import {
   XCircle,
   MessageCircle,
   Phone,
-  Crown,
-  Heart,
+  Medal,
   IdCard,
   Download,
-  UserPlus,
   Users,
 } from "lucide-react";
 
 import { eliminar } from "./acciones";
 import type { Afiliado, Lider } from "./esquemas";
+import { esUsuarioSede } from "./esquemas";
 import GestionDpiModal from "./GestionDpiModal";
-import {
-  Dialog,
-  Transition,
-  TransitionChild,
-  DialogPanel,
-} from "@headlessui/react";
-import { Fragment } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import CarnetAfiliacion from "./CarnetAfiliacion";
+import { formatearDpi, TelefonoInline } from "./contacto";
+import { etiquetaEdadNacimiento } from "./fechaNacimiento";
+
+export type FormatoVista = "tarjetas" | "tabla";
 
 interface Props {
   lider: Lider;
   afiliados: Afiliado[];
   onEditar: (afiliado: Afiliado) => void;
   onAnadirFamiliar?: (titularId: string) => void;
+  onVerFamilia?: (titular: Afiliado) => void;
   onDataChange: () => void;
   rolUsuarioSesion: string;
   config?: any;
   totalEnCelula?: number;
   isFamilyView?: boolean;
+  formato?: FormatoVista;
 }
 
 export default function Tabla({
@@ -49,102 +46,24 @@ export default function Tabla({
   afiliados,
   onEditar,
   onAnadirFamiliar,
+  onVerFamilia,
   onDataChange,
   rolUsuarioSesion,
   config,
   totalEnCelula,
   isFamilyView = false,
+  formato = "tarjetas",
 }: Props) {
+  const esSedeSesion = (rolUsuarioSesion || "").toUpperCase() === "SEDE";
+  const soloLectura = esSedeSesion && !esUsuarioSede(lider);
+  const puedeEditar = !soloLectura;
   const puedeVerAcciones = true;
   const totalAfiliados = totalEnCelula ?? afiliados.length;
 
   const [gestionDpiAfiliado, setGestionDpiAfiliado] = useState<Afiliado | null>(
     null,
   );
-  const [titularVerFamilia, setTitularVerFamilia] = useState<Afiliado | null>(
-    null,
-  );
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const toggleExpand = (id: string) => {
-    setExpandedId((prev) => (prev === id ? null : id));
-  };
-
-  const descargarCarnet = (afiliado: Afiliado) => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    canvas.width = 1000;
-    canvas.height = 630;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "#1e40af";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(30, 30, canvas.width - 60, canvas.height - 60);
-    ctx.fillStyle = "#1e40af";
-    ctx.fillRect(30, 30, 100, 10);
-    ctx.fillRect(30, 30, 10, 100);
-    ctx.fillRect(canvas.width - 130, 30, 100, 10);
-    ctx.fillRect(canvas.width - 40, 30, 10, 100);
-    ctx.fillStyle = "#1e40af";
-    ctx.font = "bold 24px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("CONSTANCIA DE AFILIACIÓN", canvas.width / 2, 75);
-    ctx.fillStyle = "#111827";
-    ctx.font = "900 40px sans-serif";
-    ctx.fillText(
-      config?.nombre_candidato?.toUpperCase() || "AFILIACIÓN",
-      canvas.width / 2,
-      125,
-    );
-    ctx.beginPath();
-    ctx.moveTo(100, 155);
-    ctx.lineTo(900, 155);
-    ctx.strokeStyle = "#e5e7eb";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.textAlign = "left";
-    ctx.fillStyle = "#6b7280";
-    ctx.font = "bold 20px sans-serif";
-    ctx.fillText("NOMBRE DEL AFILIADO:", 100, 210);
-    ctx.fillStyle = "#1e40af";
-    ctx.font = "bold 44px sans-serif";
-    ctx.fillText(
-      `${afiliado.nombres} ${afiliado.apellidos}`.toUpperCase(),
-      100,
-      265,
-    );
-    ctx.fillStyle = "#6b7280";
-    ctx.font = "bold 20px sans-serif";
-    ctx.fillText("DOCUMENTO PERSONAL DE IDENTIFICACIÓN (DPI):", 100, 340);
-    ctx.fillStyle = "#111827";
-    ctx.font = "bold 38px monospace";
-    ctx.fillText(afiliado.dpi || "0000 00000 0000", 100, 390);
-    ctx.fillStyle = "#6b7280";
-    ctx.font = "bold 20px sans-serif";
-    ctx.fillText("NO. DE PADRÓN:", 100, 460);
-    ctx.fillStyle = "#111827";
-    ctx.font = "bold 32px sans-serif";
-    ctx.fillText(afiliado.no_padron || "N/A", 100, 505);
-    ctx.fillStyle = "#6b7280";
-    ctx.font = "bold 20px sans-serif";
-    ctx.fillText("MUNICIPIO / LUGAR:", 550, 460);
-    ctx.fillStyle = "#111827";
-    ctx.font = "bold 32px sans-serif";
-    ctx.fillText(afiliado.lugar_nombre || config?.lugar || "—", 550, 505);
-    ctx.fillStyle = "#9ca3af";
-    ctx.font = "italic 18px sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText(
-      `Afiliado el: ${new Date(afiliado.created_at).toLocaleDateString("es-GT")}`,
-      900,
-      580,
-    );
-    const link = document.createElement("a");
-    link.download = `carnet_${afiliado.nombres.replace(/\s/g, "_")}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  };
+  const [afiliadoCarnet, setAfiliadoCarnet] = useState<Afiliado | null>(null);
 
   const obtenerDpiInfo = (afiliado: Afiliado) => {
     const hasDpi = !!afiliado.dpi_frontal_url || !!afiliado.dpi_reverso_url;
@@ -164,17 +83,8 @@ export default function Tabla({
     );
   }
 
-  const calcularEdad = (fechaNacimiento: string) => {
-    if (!fechaNacimiento) return "—";
-    const hoy = new Date();
-    const nacimiento = new Date(fechaNacimiento);
-    let edad = hoy.getFullYear() - nacimiento.getFullYear();
-    const mes = hoy.getMonth() - nacimiento.getMonth();
-    if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
-      edad--;
-    }
-    return `${edad} años`;
-  };
+  const calcularEdad = (fechaNacimiento: string) =>
+    etiquetaEdadNacimiento(fechaNacimiento);
 
   const generarLinkWhatsapp = (telefono: string) => {
     if (!telefono) return "#";
@@ -220,6 +130,154 @@ export default function Tabla({
   const todosOrdenados: Array<{ afiliado: Afiliado; depth: number }> =
     titulares.map((a) => ({ afiliado: a, depth: 0 }));
 
+  if (formato === "tabla") {
+    return (
+      <>
+        <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-neutral-700">
+          <table className="min-w-full bg-white dark:bg-neutral-900 text-xs">
+            <thead className="bg-gray-100 dark:bg-neutral-800">
+              <tr>
+                <th className="px-3 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                  No.
+                </th>
+                <th className="px-3 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                  Nombre
+                </th>
+                <th className="px-3 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                  DPI
+                </th>
+                <th className="px-3 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                  Teléfono
+                </th>
+                <th className="px-3 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                  Edad
+                </th>
+                <th className="px-3 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                  Sexo
+                </th>
+                <th className="px-3 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                  Ubicación
+                </th>
+                <th className="px-3 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                  Padrón
+                </th>
+                {puedeEditar && (
+                  <th className="px-3 py-2 text-right font-bold text-gray-600 dark:text-gray-300 uppercase">
+                    Acciones
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
+              {todosOrdenados.map(({ afiliado }, index) => {
+                const esLider = !!afiliado.es_lider;
+                const puedeEliminar = !(esLider && totalAfiliados > 1);
+                return (
+                  <tr
+                    key={afiliado.id}
+                    className={`hover:bg-gray-50 dark:hover:bg-neutral-800/50 ${
+                      esLider
+                        ? "bg-orange-50/70 dark:bg-orange-950/30"
+                        : afiliado.familiar_de
+                          ? "bg-purple-50/40 dark:bg-purple-950/20"
+                          : ""
+                    }`}
+                  >
+                    <td className="px-3 py-2 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                      {index + 1}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap font-bold text-gray-900 dark:text-gray-100 uppercase">
+                      {esLider ? "Líder: " : ""}
+                      {afiliado.nombres} {afiliado.apellidos}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap font-mono">
+                      {afiliado.dpi ? formatearDpi(afiliado.dpi) : "—"}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap normal-case">
+                      <TelefonoInline telefono={afiliado.telefono || ""} />
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap font-bold">
+                      {calcularEdad(afiliado.nacimiento)}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap font-bold">
+                      {afiliado.sexo || "—"}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <div className="flex flex-col">
+                        <span>{afiliado.lugar_nombre || "—"}</span>
+                        {afiliado.sector_nombre && (
+                          <span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">
+                            {afiliado.sector_nombre}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {afiliado.empadronado ? (
+                        <span className="font-mono font-bold text-green-700 dark:text-green-400">
+                          {afiliado.no_padron || "—"}
+                        </span>
+                      ) : (
+                        <span className="font-bold text-red-600 dark:text-red-400 uppercase">
+                          No
+                        </span>
+                      )}
+                    </td>
+                    {puedeEditar && (
+                      <td className="px-3 py-2 whitespace-nowrap text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setAfiliadoCarnet(afiliado)}
+                            className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[10px] font-bold uppercase text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                            title="Carnet"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onEditar(afiliado)}
+                            className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[10px] font-bold uppercase text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-neutral-800"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!puedeEliminar}
+                            onClick={() =>
+                              puedeEliminar && eliminar(afiliado, onDataChange)
+                            }
+                            className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[10px] font-bold uppercase text-red-600 hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/40"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <CarnetAfiliacion
+          afiliado={afiliadoCarnet}
+          open={!!afiliadoCarnet}
+          onClose={() => setAfiliadoCarnet(null)}
+        />
+        <GestionDpiModal
+          isOpen={!!gestionDpiAfiliado}
+          onClose={() => setGestionDpiAfiliado(null)}
+          afiliado={gestionDpiAfiliado}
+          onSaved={() => {
+            onDataChange();
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
@@ -243,13 +301,12 @@ export default function Tabla({
               {esLider && (
                 <div className="absolute -top-2.5 left-3 z-10">
                   <span className="flex items-center gap-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow-sm border border-orange-400">
-                    <Crown className="w-2.5 h-2.5" /> Líder
+                    <Medal className="w-2.5 h-2.5" /> Líder
                   </span>
                 </div>
               )}
 
               <div className={`p-2 flex-1 space-y-2 ${esLider ? "pt-4" : ""}`}>
-                {!esLider && (
                 <div className="flex items-center justify-between bg-slate-50 dark:bg-neutral-800/90 border border-slate-200 dark:border-neutral-700 rounded-xl px-3 py-2 min-h-[48px] shadow-sm">
                   <div className="flex items-center gap-3 min-w-0">
                     <div
@@ -271,7 +328,6 @@ export default function Tabla({
                     </h3>
                   </div>
 
-                  {/* Right Side: Age & Gender */}
                   <div className="flex items-center gap-2 shrink-0 border-l border-slate-200 dark:border-neutral-700 pl-3 ml-2">
                     <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-neutral-700 border border-slate-200 dark:border-neutral-700 px-2 py-1 rounded-lg text-xs">
                       <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-neutral-400" />
@@ -292,7 +348,6 @@ export default function Tabla({
                     </div>
                   </div>
                 </div>
-                )}
 
                 <div
                   className={`flex items-center gap-2 border rounded-lg px-2.5 py-1.5 w-full ${
@@ -432,11 +487,11 @@ export default function Tabla({
                   {/* Primera Línea (Móvil) / Grupo Izquierdo (Desktop) */}
                   <div className="flex items-center justify-center gap-4 sm:gap-2 px-2 py-2.5 sm:p-0 w-full sm:w-auto">
                     {/* Ver Familia Button */}
-                    {!esFamiliar && !isFamilyView && (
+                    {!esFamiliar && !isFamilyView && onVerFamilia && (
                       <button
                         type="button"
                         className="inline-flex items-center justify-center rounded-lg px-3 py-1.5 gap-1.5 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-950/50 hover:text-purple-900 dark:hover:text-purple-300 text-xs font-black uppercase transition-colors"
-                        onClick={() => setTitularVerFamilia(afiliado)}
+                        onClick={() => onVerFamilia(afiliado)}
                       >
                         <Users className="w-4 h-4" />
                         Familia (
@@ -444,56 +499,69 @@ export default function Tabla({
                       </button>
                     )}
 
-                    {/* Ver/Cargar DPI */}
+                    {!soloLectura && (
+                      <button
+                        type="button"
+                        onClick={() => setGestionDpiAfiliado(afiliado)}
+                        className={`inline-flex items-center justify-center rounded-lg px-3 py-1.5 gap-1.5 text-xs font-black uppercase transition-colors ${obtenerDpiInfo(afiliado).color}`}
+                      >
+                        <IdCard className="w-4 h-4" />
+                        {obtenerDpiInfo(afiliado).label}
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => setGestionDpiAfiliado(afiliado)}
-                      className={`inline-flex items-center justify-center rounded-lg px-3 py-1.5 gap-1.5 text-xs font-black uppercase transition-colors ${obtenerDpiInfo(afiliado).color}`}
+                      onClick={() => setAfiliadoCarnet(afiliado)}
+                      className="inline-flex items-center justify-center rounded-lg px-3 py-1.5 gap-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-950/50 text-xs font-black uppercase transition-colors"
                     >
-                      <IdCard className="w-4 h-4" />
-                      {obtenerDpiInfo(afiliado).label}
+                      <Download className="w-4 h-4" />
+                      Carnet
                     </button>
                   </div>
 
-                  {/* División (Solo Móvil) */}
-                  <div className="w-full h-px bg-slate-200 dark:bg-neutral-700 sm:hidden"></div>
-
-                  {/* Segunda Línea (Móvil) / Grupo Derecho (Desktop) */}
-                  <div className="flex items-center justify-center gap-4 sm:gap-2 px-2 py-2.5 sm:p-0 w-full sm:w-auto">
-                    {/* Editar Button */}
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center rounded-lg px-3 py-1.5 gap-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-neutral-700 hover:text-slate-900 dark:hover:text-white text-xs font-black uppercase transition-colors"
-                      onClick={() => onEditar(afiliado)}
-                    >
-                      <Pencil className="w-4 h-4" />
-                      Editar
-                    </button>
-
-                    {/* Eliminar Button */}
-                    <button
-                      type="button"
-                      disabled={!puedeEliminar}
-                      title={
-                        !puedeEliminar
-                          ? "No se puede eliminar al líder mientras tenga integrantes"
-                          : undefined
-                      }
-                      className="inline-flex items-center justify-center rounded-lg px-3 py-1.5 gap-1.5 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50 hover:text-red-900 dark:hover:text-red-300 text-xs font-black uppercase transition-colors disabled:opacity-40"
-                      onClick={() =>
-                        puedeEliminar && eliminar(afiliado, onDataChange)
-                      }
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Borrar
-                    </button>
-                  </div>
+                  {!soloLectura && (
+                    <>
+                      <div className="w-full h-px bg-slate-200 dark:bg-neutral-700 sm:hidden"></div>
+                      <div className="flex items-center justify-center gap-4 sm:gap-2 px-2 py-2.5 sm:p-0 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center rounded-lg px-3 py-1.5 gap-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-neutral-700 hover:text-slate-900 dark:hover:text-white text-xs font-black uppercase transition-colors"
+                          onClick={() => onEditar(afiliado)}
+                        >
+                          <Pencil className="w-4 h-4" />
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!puedeEliminar}
+                          title={
+                            !puedeEliminar
+                              ? "No se puede eliminar al líder mientras tenga integrantes"
+                              : undefined
+                          }
+                          className="inline-flex items-center justify-center rounded-lg px-3 py-1.5 gap-1.5 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50 hover:text-red-900 dark:hover:text-red-300 text-xs font-black uppercase transition-colors disabled:opacity-40"
+                          onClick={() =>
+                            puedeEliminar && eliminar(afiliado, onDataChange)
+                          }
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Borrar
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
+      <CarnetAfiliacion
+        afiliado={afiliadoCarnet}
+        open={!!afiliadoCarnet}
+        onClose={() => setAfiliadoCarnet(null)}
+      />
 
       <GestionDpiModal
         isOpen={!!gestionDpiAfiliado}
@@ -503,103 +571,6 @@ export default function Tabla({
           onDataChange();
         }}
       />
-
-      <Transition show={!!titularVerFamilia} as={Fragment}>
-        <Dialog
-          as="div"
-          className="relative z-50"
-          onClose={() => setTitularVerFamilia(null)}
-        >
-          <TransitionChild
-            as={Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" />
-          </TransitionChild>
-
-          <div className="fixed inset-0 z-10">
-            <div className="flex min-h-full items-center justify-center p-0">
-              <TransitionChild
-                as={Fragment}
-                enter="ease-out duration-300"
-                enterFrom="opacity-0"
-                enterTo="opacity-100"
-                leave="ease-in duration-200"
-                leaveFrom="opacity-100"
-                leaveTo="opacity-0"
-              >
-                <DialogPanel className="w-screen h-screen bg-white dark:bg-neutral-950 flex flex-col overflow-hidden">
-                  <div className="flex justify-between items-center p-4 md:p-6 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 shrink-0">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-purple-100 dark:bg-purple-950/60 p-2 rounded-lg">
-                        <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                      </div>
-                      <div>
-                        <Dialog.Title
-                          as="h3"
-                          className="text-lg md:text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight"
-                        >
-                          Familia de {titularVerFamilia?.nombres}
-                        </Dialog.Title>
-                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mt-0.5">
-                          Gestión de grupo familiar
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setTitularVerFamilia(null)}
-                      className="text-blue-600 dark:text-blue-400 font-bold hover:underline text-sm uppercase px-4 py-2"
-                    >
-                      Cerrar
-                    </button>
-                  </div>
-
-                  <div className="p-4 md:p-6 overflow-y-auto flex-1 bg-gray-50/50 dark:bg-neutral-950">
-                    {titularVerFamilia && (
-                      <div className="space-y-4">
-                        <div className="flex justify-end">
-                          {onAnadirFamiliar && (
-                            <Button
-                              onClick={() =>
-                                onAnadirFamiliar(titularVerFamilia.id)
-                              }
-                              className="bg-purple-600 hover:bg-purple-700 text-white gap-2 font-bold"
-                            >
-                              <UserPlus className="w-4 h-4" />
-                              Añadir Familiar
-                            </Button>
-                          )}
-                        </div>
-                        <Tabla
-                          lider={lider}
-                          afiliados={[
-                            titularVerFamilia,
-                            ...(familiaresPorTitular.get(
-                              titularVerFamilia.id,
-                            ) || []),
-                          ]}
-                          onEditar={onEditar}
-                          onAnadirFamiliar={onAnadirFamiliar}
-                          onDataChange={onDataChange}
-                          rolUsuarioSesion={rolUsuarioSesion}
-                          config={config}
-                          totalEnCelula={totalEnCelula}
-                          isFamilyView={true}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </DialogPanel>
-              </TransitionChild>
-            </div>
-          </div>
-        </Dialog>
-      </Transition>
     </>
   );
 }

@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
-import supabaseAdmin from "@/utils/supabase/admin";
+import { getCachedAuthUsers } from "./cache";
 
 export async function listarUsuariosAction(rol_filtro?: string | string[]) {
   const supabase = await createClient();
@@ -29,16 +29,16 @@ export async function listarUsuariosAction(rol_filtro?: string | string[]) {
     }
   }
 
-  const [perfilesRes, authRes, conteoRes] = await Promise.all([
+  const [perfilesRes, conteoRes] = await Promise.all([
     filtroPerfiles,
-    supabaseAdmin.auth.admin.listUsers({ perPage: 1000 }).catch(() => ({ data: { users: [] } })),
     supabase.from("afiliados").select("lider_id, familiar_de"),
   ]);
 
   if (perfilesRes.error) throw new Error(perfilesRes.error.message);
 
   const perfiles = perfilesRes.data || [];
-  const users = (authRes as { data?: { users: { id: string; email?: string }[] } })?.data?.users || [];
+  const authUsers = await getCachedAuthUsers();
+  const emailMap = new Map(authUsers.map((u) => [u.id, u.email || ""]));
 
   const conteoMap = new Map<string, { total: number; titulares: number; familiares: number }>();
 
@@ -56,11 +56,9 @@ export async function listarUsuariosAction(rol_filtro?: string | string[]) {
     }
   });
 
-  const userMap = new Map(users.map((u: any) => [u.id, u.email]));
-
   return perfiles.map((p: any) => ({
     id: p.user_id,
-    email: (userMap.get(p.user_id) as string)?.replace(/@.*$/, "") || "",
+    email: (emailMap.get(p.user_id) || "").replace(/@.*$/, "") || "",
     nombres: p.nombres,
     apellidos: p.apellidos,
     activo: p.activo,
@@ -71,5 +69,4 @@ export async function listarUsuariosAction(rol_filtro?: string | string[]) {
     conteoTitulares: conteoMap.get(p.user_id)?.titulares || 0,
     conteoFamiliares: conteoMap.get(p.user_id)?.familiares || 0,
   }));
-
 }

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { BrandSlogan } from "@/components/ui/BrandSlogan";
 
 export default function LogoLink() {
   const router = useRouter();
@@ -43,12 +44,15 @@ export default function LogoLink() {
             ease: [0.16, 1, 0.3, 1],
           }}
         >
-          <h1
-            className="font-serif text-sm md:text-2xl font-bold leading-tight text-left mt-3 md:mt-5 bg-gradient-to-r from-blue-800 via-blue-400 to-blue-800 dark:from-blue-400 dark:via-blue-300 dark:to-blue-500 bg-[length:200%_auto] text-transparent bg-clip-text animate-text-shine"
-            style={{ fontFamily: "'DM Serif Display', serif" }}
-          >
-            Sistema de Organización <br /> Territorial Estratégica
-          </h1>
+          <div className="mt-3 md:mt-5">
+            <h1
+              className="font-serif text-sm md:text-2xl font-bold leading-tight text-left bg-gradient-to-r from-blue-800 via-blue-400 to-blue-800 dark:from-blue-400 dark:via-blue-300 dark:to-blue-500 bg-[length:200%_auto] text-transparent bg-clip-text animate-text-shine"
+              style={{ fontFamily: "'DM Serif Display', serif" }}
+            >
+              Sistema de Organización <br /> Territorial Estratégica
+            </h1>
+            <BrandSlogan size="sm" />
+          </div>
         </motion.div>
       </motion.div>
     </div>

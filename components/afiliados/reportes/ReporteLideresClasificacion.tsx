@@ -23,6 +23,12 @@ import {
 import type { Afiliado, Lider } from "../esquemas";
 import { descargarExcelAoA } from "./descargarExcel";
 import {
+  calcularNivelCompromiso,
+  type NivelCompromisoLabel,
+} from "@/lib/nivelCompromiso";
+import { obtenerConfiguracionAction } from "@/components/dashboard/actions/configuracion";
+import { useQuery } from "@tanstack/react-query";
+import {
   BarChart,
   Bar,
   XAxis,
@@ -44,30 +50,33 @@ type Props = {
   mostrarOpcionSimular: boolean;
 };
 
-const ORDEN_NIVEL = (n: string | null | undefined): number => {
-  const v = String(n ?? "").toLowerCase();
-  if (v === "alto") return 0;
-  if (v === "medio") return 1;
-  if (v === "bajo") return 2;
-  return 3;
+type NivelTabla = NivelCompromisoLabel;
+
+type LiderConNivel = Lider & { nivelCalculado: NivelTabla };
+
+const ORDEN_NIVEL: Record<NivelTabla, number> = {
+  Alto: 0,
+  Cumple: 1,
+  Medio: 2,
+  Bajo: 3,
 };
 
-const ETIQUETA_NIVEL = (n: string | null | undefined): string => {
-  const v = String(n ?? "").toLowerCase();
-  if (v === "alto" || v === "medio" || v === "bajo")
-    return v.charAt(0).toUpperCase() + v.slice(1);
-  return "Sin calificar";
-};
-
-const COLORS_BAR: Record<string, string> = {
+const COLORS_BAR: Record<NivelTabla, string> = {
   Alto: "#15803d",
-  Medio: "#ea580c",
+  Cumple: "#2563eb",
+  Medio: "#ca8a04",
   Bajo: "#b91c1c",
-  "Sin calificar": "#6b7280",
 };
 
-const NIVELES_TABLA = ["Alto", "Medio", "Bajo", "Sin calificar"] as const;
-type NivelTabla = (typeof NIVELES_TABLA)[number];
+const NIVELES_TABLA: NivelTabla[] = ["Alto", "Cumple", "Medio", "Bajo"];
+
+function nivelDesdeIntegrantes(
+  total: number,
+  metaPorLider: number,
+  metaMinima: number,
+): NivelTabla {
+  return calcularNivelCompromiso(total, metaPorLider, metaMinima).nivel;
+}
 
 const PAGE_SIZE_DETALLE = 10;
 
@@ -267,10 +276,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "María",
     apellidos: "García López",
     rol: "LIDER",
-    nivel_compromiso: "alto",
-    conteoAfiliados: 58,
-    conteoTitulares: 36,
-    conteoFamiliares: 22,
+    conteoAfiliados: 28,
+    conteoTitulares: 18,
+    conteoFamiliares: 10,
   },
   {
     id: "demo-2",
@@ -278,10 +286,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Carlos",
     apellidos: "Méndez Ruiz",
     rol: "LIDER",
-    nivel_compromiso: "alto",
-    conteoAfiliados: 51,
-    conteoTitulares: 33,
-    conteoFamiliares: 18,
+    conteoAfiliados: 22,
+    conteoTitulares: 14,
+    conteoFamiliares: 8,
   },
   {
     id: "demo-3",
@@ -289,10 +296,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Sofía",
     apellidos: "Hernández Rivas",
     rol: "LIDER",
-    nivel_compromiso: "alto",
-    conteoAfiliados: 47,
-    conteoTitulares: 31,
-    conteoFamiliares: 16,
+    conteoAfiliados: 18,
+    conteoTitulares: 12,
+    conteoFamiliares: 6,
   },
   {
     id: "demo-4",
@@ -300,10 +306,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Roberto",
     apellidos: "Campos Estrada",
     rol: "LIDER",
-    nivel_compromiso: "alto",
-    conteoAfiliados: 44,
-    conteoTitulares: 30,
-    conteoFamiliares: 14,
+    conteoAfiliados: 16,
+    conteoTitulares: 11,
+    conteoFamiliares: 5,
   },
   {
     id: "demo-5",
@@ -311,10 +316,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Carmen",
     apellidos: "Aguilar Toledo",
     rol: "LIDER",
-    nivel_compromiso: "alto",
-    conteoAfiliados: 39,
-    conteoTitulares: 27,
-    conteoFamiliares: 12,
+    conteoAfiliados: 15,
+    conteoTitulares: 10,
+    conteoFamiliares: 5,
   },
   {
     id: "demo-6",
@@ -322,10 +326,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Ana",
     apellidos: "Morales Castillo",
     rol: "LIDER",
-    nivel_compromiso: "medio",
-    conteoAfiliados: 35,
-    conteoTitulares: 24,
-    conteoFamiliares: 11,
+    conteoAfiliados: 15,
+    conteoTitulares: 11,
+    conteoFamiliares: 4,
   },
   {
     id: "demo-7",
@@ -333,10 +336,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Luis",
     apellidos: "Ortiz Pérez",
     rol: "LIDER",
-    nivel_compromiso: "medio",
-    conteoAfiliados: 31,
-    conteoTitulares: 22,
-    conteoFamiliares: 9,
+    conteoAfiliados: 14,
+    conteoTitulares: 10,
+    conteoFamiliares: 4,
   },
   {
     id: "demo-8",
@@ -344,10 +346,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Rosa",
     apellidos: "Díaz Hernández",
     rol: "LIDER",
-    nivel_compromiso: "medio",
-    conteoAfiliados: 28,
-    conteoTitulares: 19,
-    conteoFamiliares: 9,
+    conteoAfiliados: 13,
+    conteoTitulares: 9,
+    conteoFamiliares: 4,
   },
   {
     id: "demo-9",
@@ -355,10 +356,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Miguel",
     apellidos: "Paíz Arriola",
     rol: "LIDER",
-    nivel_compromiso: "medio",
-    conteoAfiliados: 24,
-    conteoTitulares: 17,
-    conteoFamiliares: 7,
+    conteoAfiliados: 12,
+    conteoTitulares: 8,
+    conteoFamiliares: 4,
   },
   {
     id: "demo-10",
@@ -366,10 +366,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Gabriela",
     apellidos: "Romero Fuentes",
     rol: "LIDER",
-    nivel_compromiso: "medio",
-    conteoAfiliados: 21,
-    conteoTitulares: 15,
-    conteoFamiliares: 6,
+    conteoAfiliados: 11,
+    conteoTitulares: 8,
+    conteoFamiliares: 3,
   },
   {
     id: "demo-11",
@@ -377,10 +376,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Ricardo",
     apellidos: "Altán Lemus",
     rol: "LIDER",
-    nivel_compromiso: "medio",
-    conteoAfiliados: 18,
-    conteoTitulares: 14,
-    conteoFamiliares: 4,
+    conteoAfiliados: 10,
+    conteoTitulares: 7,
+    conteoFamiliares: 3,
   },
   {
     id: "demo-12",
@@ -388,10 +386,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Andrea",
     apellidos: "Macías López",
     rol: "LIDER",
-    nivel_compromiso: "medio",
-    conteoAfiliados: 16,
-    conteoTitulares: 12,
-    conteoFamiliares: 4,
+    conteoAfiliados: 10,
+    conteoTitulares: 8,
+    conteoFamiliares: 2,
   },
   {
     id: "demo-13",
@@ -399,10 +396,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Jorge",
     apellidos: "Reyes Soto",
     rol: "LIDER",
-    nivel_compromiso: "bajo",
-    conteoAfiliados: 14,
-    conteoTitulares: 11,
-    conteoFamiliares: 3,
+    conteoAfiliados: 9,
+    conteoTitulares: 7,
+    conteoFamiliares: 2,
   },
   {
     id: "demo-14",
@@ -410,10 +406,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Patricia",
     apellidos: "Vega Núñez",
     rol: "LIDER",
-    nivel_compromiso: "bajo",
-    conteoAfiliados: 11,
-    conteoTitulares: 8,
-    conteoFamiliares: 3,
+    conteoAfiliados: 7,
+    conteoTitulares: 5,
+    conteoFamiliares: 2,
   },
   {
     id: "demo-15",
@@ -421,10 +416,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Héctor",
     apellidos: "Marroquín Lara",
     rol: "LIDER",
-    nivel_compromiso: "bajo",
-    conteoAfiliados: 9,
-    conteoTitulares: 7,
-    conteoFamiliares: 2,
+    conteoAfiliados: 5,
+    conteoTitulares: 4,
+    conteoFamiliares: 1,
   },
   {
     id: "demo-16",
@@ -432,10 +426,9 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Lucía",
     apellidos: "Batres Cruz",
     rol: "LIDER",
-    nivel_compromiso: "bajo",
-    conteoAfiliados: 7,
-    conteoTitulares: 6,
-    conteoFamiliares: 1,
+    conteoAfiliados: 3,
+    conteoTitulares: 3,
+    conteoFamiliares: 0,
   },
   {
     id: "demo-17",
@@ -443,40 +436,16 @@ const LIDERES_DEMO: Lider[] = [
     nombres: "Fernando",
     apellidos: "Escobar Orellana",
     rol: "LIDER",
-    nivel_compromiso: "medio",
-    conteoAfiliados: 5,
-    conteoTitulares: 5,
+    conteoAfiliados: 1,
+    conteoTitulares: 1,
     conteoFamiliares: 0,
   },
   {
     id: "demo-18",
-    email: "demo.sin.nivel",
+    email: "alejandro.demo",
     nombres: "Alejandro",
     apellidos: "Demo Pendiente",
     rol: "LIDER",
-    nivel_compromiso: null,
-    conteoAfiliados: 3,
-    conteoTitulares: 3,
-    conteoFamiliares: 0,
-  },
-  {
-    id: "demo-19",
-    email: "claudia.demo",
-    nombres: "Claudia",
-    apellidos: "Sin nivel afiliaciones",
-    rol: "LIDER",
-    nivel_compromiso: null,
-    conteoAfiliados: 2,
-    conteoTitulares: 2,
-    conteoFamiliares: 0,
-  },
-  {
-    id: "demo-20",
-    email: "enrique.preview",
-    nombres: "Enrique",
-    apellidos: "Revisión capa",
-    rol: "LIDER",
-    nivel_compromiso: null,
     conteoAfiliados: 0,
     conteoTitulares: 0,
     conteoFamiliares: 0,
@@ -538,18 +507,35 @@ export default function ReporteLideresClasificacion({
     setPaginaEnlaces(1);
   }, [filtroDetalleNiveles, simularRegistros, mostrarOpcionSimular]);
 
+  const { data: config } = useQuery({
+    queryKey: ["config_sistema"],
+    queryFn: () => obtenerConfiguracionAction(),
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    enabled: open,
+  });
+
+  const metaPorLider = config?.meta_por_lider ?? config?.meta_celula ?? 15;
+  const metaMinima = config?.meta_celula_minima ?? 10;
+
   const simulacionDatosActivada =
     mostrarOpcionSimular && simularRegistros;
 
-  const datosEfectivos = useMemo(
-    () => (simulacionDatosActivada ? LIDERES_DEMO : lideres),
-    [simulacionDatosActivada, lideres],
-  );
+  const datosEfectivos = useMemo<LiderConNivel[]>(() => {
+    const base = simulacionDatosActivada ? LIDERES_DEMO : lideres;
+    return base.map((l) => ({
+      ...l,
+      nivelCalculado: nivelDesdeIntegrantes(
+        l.conteoAfiliados ?? 0,
+        metaPorLider,
+        metaMinima,
+      ),
+    }));
+  }, [simulacionDatosActivada, lideres, metaPorLider, metaMinima]);
 
   const ordenados = useMemo(() => {
     return [...datosEfectivos].sort((a, b) => {
-      const d =
-        ORDEN_NIVEL(a.nivel_compromiso) - ORDEN_NIVEL(b.nivel_compromiso);
+      const d = ORDEN_NIVEL[a.nivelCalculado] - ORDEN_NIVEL[b.nivelCalculado];
       if (d !== 0) return d;
       const na = `${a.nombres} ${a.apellidos}`.toLowerCase();
       const nb = `${b.nombres} ${b.apellidos}`.toLowerCase();
@@ -559,10 +545,9 @@ export default function ReporteLideresClasificacion({
 
   const ordenadosFiltrados = useMemo(() => {
     if (filtroDetalleNiveles === null) return ordenados;
-    return ordenados.filter((row) => {
-      const label = ETIQUETA_NIVEL(row.nivel_compromiso) as NivelTabla;
-      return filtroDetalleNiveles.has(label);
-    });
+    return ordenados.filter((row) =>
+      filtroDetalleNiveles.has(row.nivelCalculado),
+    );
   }, [ordenados, filtroDetalleNiveles]);
 
   useEffect(() => {
@@ -575,10 +560,9 @@ export default function ReporteLideresClasificacion({
 
   const lideresEnVista = useMemo(() => {
     if (filtroDetalleNiveles === null) return datosEfectivos;
-    return datosEfectivos.filter((row) => {
-      const label = ETIQUETA_NIVEL(row.nivel_compromiso) as NivelTabla;
-      return filtroDetalleNiveles.has(label);
-    });
+    return datosEfectivos.filter((row) =>
+      filtroDetalleNiveles.has(row.nivelCalculado),
+    );
   }, [datosEfectivos, filtroDetalleNiveles]);
 
   const lideresEnlacesLista = useMemo(
@@ -609,25 +593,16 @@ export default function ReporteLideresClasificacion({
   );
 
   const datosGrafico = useMemo(() => {
-    const claves: Array<{ key: string; label: string }> = [
-      { key: "alto", label: "Alto" },
-      { key: "medio", label: "Medio" },
-      { key: "bajo", label: "Bajo" },
-      { key: "otro", label: "Sin calificar" },
-    ];
-    const counts = new Map<string, number>(claves.map((c) => [c.label, 0]));
+    const counts = new Map<NivelTabla, number>(
+      NIVELES_TABLA.map((n) => [n, 0]),
+    );
     lideresEnVista.forEach((l) => {
-      const v = String(l.nivel_compromiso ?? "").toLowerCase();
-      if (v === "alto") counts.set("Alto", (counts.get("Alto") ?? 0) + 1);
-      else if (v === "medio")
-        counts.set("Medio", (counts.get("Medio") ?? 0) + 1);
-      else if (v === "bajo") counts.set("Bajo", (counts.get("Bajo") ?? 0) + 1);
-      else counts.set("Sin calificar", (counts.get("Sin calificar") ?? 0) + 1);
+      counts.set(l.nivelCalculado, (counts.get(l.nivelCalculado) ?? 0) + 1);
     });
-    return claves.map((c) => ({
-      nombre: c.label,
-      cantidad: counts.get(c.label) ?? 0,
-      fill: COLORS_BAR[c.label],
+    return NIVELES_TABLA.map((nombre) => ({
+      nombre,
+      cantidad: counts.get(nombre) ?? 0,
+      fill: COLORS_BAR[nombre],
     }));
   }, [lideresEnVista]);
 
@@ -855,8 +830,8 @@ export default function ReporteLideresClasificacion({
     modoTerritorio === "solo_distrito";
 
   const territorioTituloBarras = muestraChartsDistritoTerritorio
-    ? "Titulares y familiares por distrito (barras)"
-    : "Titulares y familiares por sector (barras)";
+    ? "Titulares y familiares por distrito"
+    : "Titulares y familiares por sector";
   const territorioBarrasFilas = muestraChartsDistritoTerritorio
     ? regionBarrasPorDistrito
     : regionBarrasPorSector;
@@ -880,7 +855,7 @@ export default function ReporteLideresClasificacion({
 
   const subtituloCabeceraReporte =
     pestañaReporte === "lideres"
-      ? `Orden: alto → medio → bajo · ${datosEfectivos.length} líderes${simulacionDatosActivada ? " · vista simulada" : ""}`
+      ? `Orden: alto → cumple → medio → bajo · metas ${metaMinima}/${metaPorLider} · ${datosEfectivos.length} líderes${simulacionDatosActivada ? " · vista simulada" : ""}`
       : pestañaReporte === "enlaces"
         ? `Titulares y familiares por célula · ${lideresEnVista.length} líderes en vista${simulacionDatosActivada ? " · simulada" : ""}`
         : `Vista territorial · ${etiquetaVistaTerritorio} · ${afiliadosPorRegionFuente.length} afiliados${simulacionDatosActivada ? " · simulada" : ""}`;
@@ -898,7 +873,7 @@ export default function ReporteLideresClasificacion({
       ],
       ...ordenadosFiltrados.map((row, i) => {
         const nombre = `${row.nombres} ${row.apellidos}`.trim();
-        const label = ETIQUETA_NIVEL(row.nivel_compromiso);
+        const label = row.nivelCalculado;
         return [
           i + 1,
           nombre,
@@ -1120,16 +1095,16 @@ export default function ReporteLideresClasificacion({
                         <span className="font-black uppercase text-amber-900">
                           Líderes:
                         </span>{" "}
-                        La vista resume la clasificación por nivel de compromiso de cada líder (
+                        La clasificación usa los integrantes de cada célula y las metas del sistema: Bajo bajo la mínima, Medio desde la mínima hasta antes de la meta por líder, Cumple en la meta por líder y Alto por encima (
                         {!simulacionDatosActivada
-                          ? "información cargada desde el sistema"
-                          : "datos ilustrativos"}
+                          ? "datos del sistema"
+                          : "vista simulada"}
                         ).
                       </div>
                       <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
                         <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
                           <h3 className="mb-4 text-xs font-black uppercase tracking-wider text-slate-500">
-                            Distribución (barras)
+                            Distribución
                           </h3>
                           <div className="h-64 w-full md:h-72">
                             <ResponsiveContainer width="100%" height="100%">
@@ -1185,7 +1160,7 @@ export default function ReporteLideresClasificacion({
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
                           <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">
-                            Distribución (dona)
+                            Distribución
                           </h3>
                           <div className="flex h-64 w-full flex-col md:h-72">
                             {pieData.length > 0 ? (
@@ -1325,12 +1300,8 @@ export default function ReporteLideresClasificacion({
                             </thead>
                             <tbody>
                               {filasPaginaDetalle.map((row, i) => {
-                                const label = ETIQUETA_NIVEL(
-                                  row.nivel_compromiso,
-                                );
-                                const color =
-                                  COLORS_BAR[label] ??
-                                  COLORS_BAR["Sin calificar"];
+                                const label = row.nivelCalculado;
+                                const color = COLORS_BAR[label];
                                 return (
                                   <tr
                                     key={row.id}
@@ -1852,7 +1823,7 @@ export default function ReporteLideresClasificacion({
                             {!muestraChartsDistritoTerritorio && (
                               <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
                                 <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">
-                                  Distribución por sector (dona)
+                                  Distribución por sector
                                 </h3>
                                 <div className="h-64 w-full md:h-72">
                                   {regionPiePorSector.length > 0 ? (

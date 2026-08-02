@@ -1,11 +1,21 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  Building2,
+  Briefcase,
+  Download,
+  Medal,
+  Users,
+} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import * as XLSX from "xlsx";
-import { Button } from "@/components/ui/button";
-import { ChevronDown, Crown, Heart, User, Phone, MessageCircle, FileSpreadsheet, Loader2 } from "lucide-react";
 import type { Afiliado, Lider } from "./esquemas";
-import { motion } from "framer-motion";
+import { esUsuarioSede } from "./esquemas";
+import { formatearDpi, TelefonoInline } from "./contacto";
+import { etiquetaEdadNacimiento } from "./fechaNacimiento";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   afiliados: Afiliado[];
@@ -14,407 +24,615 @@ interface Props {
   onDataChange: () => void;
   searchTerm: string;
   isLoading?: boolean;
-  idUsuarioSesion?: string;
-  rolUsuarioSesion?: string;
+}
+
+type GrupoTipo = "todos" | "sede" | "lider" | "trabajador";
+
+type GrupoAfiliados = {
+  lider: Lider;
+  afiliados: Afiliado[];
+  tipo: Exclude<GrupoTipo, "todos">;
+};
+
+const CATEGORIAS: Array<{
+  tipo: GrupoTipo;
+  titulo: string;
+  icon: typeof Building2;
+  active: string;
+  idle: string;
+  rowActive: string;
+}> = [
+  {
+    tipo: "todos",
+    titulo: "Todos",
+    icon: Users,
+    active:
+      "bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-200/50 dark:shadow-none",
+    idle: "bg-white dark:bg-neutral-900 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/40",
+    rowActive: "bg-sky-50 dark:bg-sky-950/40",
+  },
+  {
+    tipo: "sede",
+    titulo: "Sede",
+    icon: Building2,
+    active:
+      "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-200/50 dark:shadow-none",
+    idle: "bg-white dark:bg-neutral-900 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/40",
+    rowActive: "bg-blue-50 dark:bg-blue-950/40",
+  },
+  {
+    tipo: "lider",
+    titulo: "Líderes",
+    icon: Medal,
+    active:
+      "bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-200/50 dark:shadow-none",
+    idle: "bg-white dark:bg-neutral-900 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800 hover:bg-orange-50 dark:hover:bg-orange-950/40",
+    rowActive: "bg-orange-50 dark:bg-orange-950/30",
+  },
+  {
+    tipo: "trabajador",
+    titulo: "Empleado",
+    icon: Briefcase,
+    active:
+      "bg-violet-600 text-white border-violet-600 shadow-md shadow-violet-200/50 dark:shadow-none",
+    idle: "bg-white dark:bg-neutral-900 text-violet-700 dark:text-violet-400 border-violet-200 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-violet-950/40",
+    rowActive: "bg-violet-50 dark:bg-violet-950/30",
+  },
+];
+
+function esRolEmpleado(rol: string | null | undefined) {
+  const r = (rol || "").toUpperCase();
+  return r === "EMPLEADO" || r === "TRABAJADOR";
+}
+
+function tipoDeLider(lider: Lider): Exclude<GrupoTipo, "todos"> {
+  if (esUsuarioSede(lider)) return "sede";
+  if (esRolEmpleado(lider.rol)) return "trabajador";
+  return "lider";
+}
+
+function etiquetaGrupo(tipo: Exclude<GrupoTipo, "todos">) {
+  if (tipo === "sede") return "Sede";
+  if (tipo === "trabajador") return "Empleado";
+  return "Líder";
+}
+
+function normalizarNombre(texto: string) {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function compararNombres(a: string, b: string) {
+  return normalizarNombre(a).localeCompare(normalizarNombre(b), "es");
+}
+
+function calcularEdad(fechaNacimiento: string) {
+  return etiquetaEdadNacimiento(fechaNacimiento);
+}
+
+function filaExcel(
+  afiliado: Afiliado,
+  liderNombre: string,
+  grupo: string,
+) {
+  return {
+    Nombre: `${afiliado.nombres} ${afiliado.apellidos}`.trim(),
+    DPI: afiliado.dpi || "",
+    Teléfono: afiliado.telefono || "",
+    Edad: calcularEdad(afiliado.nacimiento),
+    Sexo: afiliado.sexo || "",
+    Ubicación: afiliado.lugar_nombre || "",
+    Empadronado: afiliado.empadronado ? "Sí" : "No",
+    "No. Padrón": afiliado.no_padron || "",
+    Líder: liderNombre,
+    Grupo: grupo,
+  };
+}
+
+function AfiliadosSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4">
+      <div className="flex gap-2">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="h-12 w-36 bg-gray-100 dark:bg-neutral-800 rounded-xl"
+          />
+        ))}
+      </div>
+      <div className="h-64 bg-gray-100 dark:bg-neutral-800 rounded-xl" />
+    </div>
+  );
 }
 
 export default function AfiliadosGeneral({
   afiliados,
   lideres,
-  onEditar,
-  onDataChange,
   searchTerm,
   isLoading = false,
-  idUsuarioSesion = "",
-  rolUsuarioSesion = "",
 }: Props) {
-  const [liderAbiertoId, setLiderAbiertoId] = useState<string | null>(null);
-  const [exportando, setExportando] = useState(false);
-  const [exportandoId, setExportandoId] = useState<string | null>(null);
+  const [categoria, setCategoria] = useState<GrupoTipo>("todos");
+  const [liderSeleccionadoId, setLiderSeleccionadoId] = useState<string | null>(
+    null,
+  );
 
-  const esAdminOSuper = ["ADMIN", "SUPER", "ADMINISTRADOR"].includes(rolUsuarioSesion.toUpperCase());
-
-  const calcularEdad = (fechaNacimiento: string) => {
-    if (!fechaNacimiento) return "—";
-    const hoy = new Date();
-    const nacimiento = new Date(fechaNacimiento);
-    let edad = hoy.getFullYear() - nacimiento.getFullYear();
-    const mes = hoy.getMonth() - nacimiento.getMonth();
-    if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
-      edad--;
-    }
-    return `${edad} años`;
-  };
-
-  const generarLinkWhatsapp = (telefono: string) => {
-    if (!telefono) return "#";
-    const numeroLimpio = telefono.replace(/\D/g, "");
-    const numeroFinal =
-      numeroLimpio.length === 8 ? `502${numeroLimpio}` : numeroLimpio;
-    return `https://wa.me/${numeroFinal}`;
-  };
-
-  const timestampArchivo = () => {
-    const ts = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}`;
-  };
-
-  const encabezado = [
-    "No.", "Nombres", "Apellidos", "DPI", "Padrón", "Teléfono", "Teléfono 2", "Teléfono 3",
-    "Edad", "Sexo", "Empadronado", "Líder", "Ubicación", "Sector",
-    "Programa de Interés", "Religión", "Condición Especial", "Fecha de Registro"
-  ];
-
-  const construirFilasGrupo = (list: Afiliado[], lider: Lider | null) => {
-    const liderRow = list.find((a) => !!a.es_lider) ?? list[0];
-    const titulares = list.filter((a) => !a.familiar_de && a.id !== liderRow?.id);
-    const familiaresPorTitular = new Map<string, Afiliado[]>();
-    list.forEach(a => {
-      if (a.familiar_de) {
-        if (!familiaresPorTitular.has(a.familiar_de)) familiaresPorTitular.set(a.familiar_de, []);
-        familiaresPorTitular.get(a.familiar_de)!.push(a);
-      }
-    });
-    const ordenados: Afiliado[] = [];
-    if (liderRow) {
-      ordenados.push(liderRow);
-      familiaresPorTitular.get(liderRow.id)?.forEach(f => ordenados.push(f));
-    }
-    titulares.forEach(t => {
-      ordenados.push(t);
-      familiaresPorTitular.get(t.id)?.forEach(f => ordenados.push(f));
-    });
-
-    const filas: (string | number)[][] = [];
-    ordenados.forEach((a, idx) => {
-      filas.push([
-        idx + 1,
-        a.nombres,
-        a.apellidos,
-        a.dpi || "—",
-        a.no_padron || "—",
-        a.telefono || "—",
-        a.telefono2 || "—",
-        a.telefono3 || "—",
-        calcularEdad(a.nacimiento),
-        a.sexo === "M" ? "Masculino" : "Femenino",
-        a.empadronado ? "Sí" : "No",
-        lider ? `${lider.nombres} ${lider.apellidos}` : "Sin Líder",
-        a.lugar_nombre || "—",
-        a.sector_nombre || "—",
-        a.politica || "—",
-        a.religion || "—",
-        a.condicion_especial || "—",
-        new Date(a.created_at).toLocaleDateString("es-GT"),
-      ]);
-    });
-    return filas;
-  };
-
-  // Excel general MULTI-HOJA — solo ADMIN/SUPER
-  const exportarExcelGeneral = () => {
-    setExportando(true);
-    try {
-      const wb = XLSX.utils.book_new();
-      afiliadosAgrupados.forEach(({ lider, afiliados: list }) => {
-        const nombreHoja = (lider
-          ? `${lider.nombres} ${lider.apellidos}`
-          : "Sin Lider").slice(0, 31);
-        const filas = [encabezado, ...construirFilasGrupo(list, lider)];
-        const ws = XLSX.utils.aoa_to_sheet(filas);
-        XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
-      });
-      XLSX.writeFile(wb, `miembros-general-${timestampArchivo()}.xlsx`);
-    } finally {
-      setExportando(false);
-    }
-  };
-
-  // Excel individual por célula (una hoja)
-  const exportarExcelCelula = (lider: Lider | null, list: Afiliado[]) => {
-    const key = lider?.id || "sin-lider";
-    setExportandoId(key);
-    try {
-      const wb = XLSX.utils.book_new();
-      const nombreHoja = (lider
-        ? `${lider.nombres} ${lider.apellidos}`
-        : "Sin Lider").slice(0, 31);
-      const filas = [encabezado, ...construirFilasGrupo(list, lider)];
-      const ws = XLSX.utils.aoa_to_sheet(filas);
-      XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
-      const nombreBase = lider
-        ? `celula-${lider.nombres.toLowerCase().replace(/\s+/g, "-")}`
-        : "celula-sin-lider";
-      XLSX.writeFile(wb, `${nombreBase}-${timestampArchivo()}.xlsx`);
-    } finally {
-      setExportandoId(null);
-    }
-  };
-
-  const afiliadosAgrupados = useMemo(() => {
-    const grouped = new Map<string, Afiliado[]>();
+  const grupos = useMemo(() => {
     const term = searchTerm.toLowerCase();
+    const grouped = new Map<string, Afiliado[]>();
 
-    const afiliadosFiltradosPorRol = esAdminOSuper
-      ? afiliados
-      : afiliados.filter((a) => a.lider_id === idUsuarioSesion);
-
-    afiliadosFiltradosPorRol.forEach((afiliado) => {
-      const liderId = afiliado.lider_id || "SIN_LIDER";
-      const fullName = `${afiliado.nombres} ${afiliado.apellidos}`.toLowerCase();
+    afiliados.forEach((afiliado) => {
+      if (!afiliado.lider_id) return;
+      const fullName =
+        `${afiliado.nombres} ${afiliado.apellidos}`.toLowerCase();
       const dpi = afiliado.dpi || "";
+      if (searchTerm && !fullName.includes(term) && !dpi.includes(term)) {
+        return;
+      }
+      if (!grouped.has(afiliado.lider_id)) {
+        grouped.set(afiliado.lider_id, []);
+      }
+      grouped.get(afiliado.lider_id)?.push(afiliado);
+    });
 
-      if (!searchTerm || fullName.includes(term) || dpi.includes(term)) {
-        if (!grouped.has(liderId)) grouped.set(liderId, []);
-        grouped.get(liderId)?.push(afiliado);
+    const result: GrupoAfiliados[] = [];
+
+    lideres.forEach((lider) => {
+      const tipo = tipoDeLider(lider);
+      const rol = (lider.rol || "").toUpperCase();
+
+      if (tipo === "sede") {
+        result.push({
+          lider,
+          afiliados: grouped.get(lider.id) || [],
+          tipo: "sede",
+        });
+        return;
+      }
+      if (esRolEmpleado(rol)) {
+        result.push({
+          lider,
+          afiliados: grouped.get(lider.id) || [],
+          tipo: "trabajador",
+        });
+        return;
+      }
+      if (rol === "LIDER") {
+        result.push({
+          lider,
+          afiliados: grouped.get(lider.id) || [],
+          tipo: "lider",
+        });
       }
     });
 
-    const leadersMap = new Map(lideres.map((l) => [l.id, l]));
-    const leaderGroups: Array<{ lider: Lider | null; afiliados: Afiliado[] }> = [];
-
-    grouped.forEach((list, liderId) => {
-      if (liderId !== "SIN_LIDER") {
-        const lider = leadersMap.get(liderId);
-        if (lider) leaderGroups.push({ lider, afiliados: list });
-      }
-    });
-
-    if (grouped.has("SIN_LIDER")) {
-      leaderGroups.push({ lider: null, afiliados: grouped.get("SIN_LIDER") || [] });
-    }
-
-    return leaderGroups;
-  }, [afiliados, lideres, searchTerm, idUsuarioSesion, esAdminOSuper]);
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4 animate-pulse mt-4">
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="border rounded-lg shadow-sm">
-            <div className="flex justify-between items-center p-4 bg-gray-100/50 dark:bg-neutral-800/50 rounded-lg">
-              <div className="h-5 bg-gray-200 dark:bg-neutral-700 rounded w-1/3"></div>
-              <div className="h-5 bg-gray-200 dark:bg-neutral-700 rounded w-5"></div>
-            </div>
-          </div>
-        ))}
-      </div>
+    return result.sort((a, b) =>
+      compararNombres(
+        `${a.lider.nombres} ${a.lider.apellidos}`,
+        `${b.lider.nombres} ${b.lider.apellidos}`,
+      ),
     );
-  }
+  }, [afiliados, lideres, searchTerm]);
 
-  if (afiliadosAgrupados.length === 0) {
+  const conteosCategoria = useMemo(() => {
+    const map: Record<GrupoTipo, number> = {
+      todos: 0,
+      sede: 0,
+      lider: 0,
+      trabajador: 0,
+    };
+    grupos.forEach((g) => {
+      map[g.tipo] += g.afiliados.length;
+      map.todos += g.afiliados.length;
+    });
+    return map;
+  }, [grupos]);
+
+  const gruposDeCategoria = useMemo(() => {
+    if (categoria === "todos") return [];
+    return grupos.filter((g) => g.tipo === categoria);
+  }, [grupos, categoria]);
+
+  const miembrosTodos = useMemo(() => {
+    const rows: Array<{
+      afiliado: Afiliado;
+      liderNombre: string;
+      grupo: string;
+    }> = [];
+
+    grupos.forEach((g) => {
+      const liderNombre = `${g.lider.nombres} ${g.lider.apellidos}`.trim();
+      const grupo = etiquetaGrupo(g.tipo);
+      g.afiliados.forEach((a) => {
+        rows.push({ afiliado: a, liderNombre, grupo });
+      });
+    });
+
+    return rows.sort((a, b) =>
+      compararNombres(
+        `${a.afiliado.nombres} ${a.afiliado.apellidos}`,
+        `${b.afiliado.nombres} ${b.afiliado.apellidos}`,
+      ),
+    );
+  }, [grupos]);
+
+  useEffect(() => {
+    setLiderSeleccionadoId(null);
+  }, [categoria, searchTerm]);
+
+  const grupoActivo = useMemo(
+    () =>
+      gruposDeCategoria.find((g) => g.lider.id === liderSeleccionadoId) || null,
+    [gruposDeCategoria, liderSeleccionadoId],
+  );
+
+  const categoriaCfg =
+    CATEGORIAS.find((c) => c.tipo === categoria) || CATEGORIAS[0];
+
+  const descargarExcel = () => {
+    const porTipo = {
+      sede: [] as ReturnType<typeof filaExcel>[],
+      lider: [] as ReturnType<typeof filaExcel>[],
+      trabajador: [] as ReturnType<typeof filaExcel>[],
+    };
+
+    grupos.forEach((g) => {
+      const liderNombre = `${g.lider.nombres} ${g.lider.apellidos}`.trim();
+      const grupo = etiquetaGrupo(g.tipo);
+      const ordenados = [...g.afiliados].sort((a, b) =>
+        compararNombres(
+          `${a.nombres} ${a.apellidos}`,
+          `${b.nombres} ${b.apellidos}`,
+        ),
+      );
+      ordenados.forEach((a) => {
+        porTipo[g.tipo].push(filaExcel(a, liderNombre, grupo));
+      });
+    });
+
+    const todos = [...porTipo.sede, ...porTipo.lider, ...porTipo.trabajador].sort(
+      (a, b) => compararNombres(a.Nombre, b.Nombre),
+    );
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(todos),
+      "Todos",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(porTipo.sede),
+      "Sede",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(porTipo.lider),
+      "Lideres",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(porTipo.trabajador),
+      "Empleados",
+    );
+
+    const fecha = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `miembros_${fecha}.xlsx`);
+  };
+
+  if (isLoading) return <AfiliadosSkeleton />;
+
+  if (grupos.every((g) => g.afiliados.length === 0) && afiliados.length === 0) {
     return (
-      <div className="text-center text-gray-500 dark:text-gray-400 mt-8 border border-gray-200 dark:border-neutral-700 rounded-lg p-4">
+      <div className="text-center text-gray-500 dark:text-gray-400 mt-8 border dark:border-neutral-700 rounded-lg p-4">
         No se encontraron miembros.
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between px-1 py-2 flex-wrap gap-2">
-        <div className="flex items-center gap-4 flex-wrap">
-          <span className="flex items-center gap-1.5 text-[11px] font-bold text-orange-700">
-            <Crown className="w-3.5 h-3.5 text-orange-500" /> Líder
-          </span>
-          <span className="flex items-center gap-1.5 text-[11px] font-bold text-purple-700">
-            <Heart className="w-3.5 h-3.5 text-purple-500" /> Familiar
-          </span>
-          <span className="flex items-center gap-1.5 text-[11px] font-bold text-blue-700">
-            <User className="w-3.5 h-3.5 text-blue-500" /> Afiliado
-          </span>
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {CATEGORIAS.map((cat) => {
+            const Icon = cat.icon;
+            const activo = categoria === cat.tipo;
+            const total = conteosCategoria[cat.tipo];
+            return (
+              <button
+                key={cat.tipo}
+                type="button"
+                onClick={() => {
+                  setCategoria(cat.tipo);
+                  setLiderSeleccionadoId(null);
+                }}
+                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all ${
+                  activo ? cat.active : cat.idle
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span>{cat.titulo}</span>
+                <span
+                  className={`text-[11px] font-black px-2 py-0.5 rounded-md ${
+                    activo
+                      ? "bg-white/20 text-white"
+                      : "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-300"
+                  }`}
+                >
+                  {total}
+                </span>
+              </button>
+            );
+          })}
         </div>
-        {/* Excel General: multi-hoja, solo ADMIN/SUPER */}
-        {esAdminOSuper && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={exportando}
-            onClick={exportarExcelGeneral}
-            className="gap-2 font-bold border-green-200 bg-green-50/70 text-green-900 hover:bg-green-100 text-xs"
-          >
-            {exportando ? (
-              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            ) : (
-              <FileSpreadsheet className="w-4 h-4 shrink-0" />
-            )}
-            Excel General (por célula)
-          </Button>
-        )}
+
+        <Button
+          type="button"
+          variant="outline"
+          onClick={descargarExcel}
+          className="gap-2 font-bold border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+        >
+          <Download className="h-4 w-4" />
+          Descargar Excel
+        </Button>
       </div>
 
-      {afiliadosAgrupados.map(({ lider, afiliados: list }) => {
-        const liderId = lider?.id || "SIN_LIDER";
-        const isLiderAbierto = liderAbiertoId === liderId;
-        const nombreLider = lider
-          ? `${lider.nombres} ${lider.apellidos}`
-          : "Miembros sin Líder asignado";
-        const colorClase = lider
-          ? (lider.rol === "SUPER" || lider.rol === "ADMINISTRADOR" || lider.rol === "ADMIN")
-            ? "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800"
-            : "bg-gray-50 dark:bg-neutral-800/50 border-gray-200 dark:border-neutral-700"
-          : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800";
-
-        return (
-          <div key={liderId} className="border border-gray-200 dark:border-neutral-700 rounded-lg shadow-sm">
-            <div
-              className={`flex justify-between items-center px-4 py-3 cursor-pointer ${colorClase} rounded-lg gap-2`}
-              onClick={() => setLiderAbiertoId(isLiderAbierto ? null : liderId)}
-            >
-              <h3 className="text-base font-bold text-gray-800 dark:text-gray-200 flex-1 min-w-0">
-                Célula de:{" "}
-                <span className="text-blue-700 uppercase">
-                  {nombreLider} ({list.length})
-                </span>
-              </h3>
-              <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                {/* Botón Excel individual por célula */}
-                <button
-                  type="button"
-                  disabled={exportandoId === liderId}
-                  onClick={() => exportarExcelCelula(lider, list)}
-                  className="flex items-center gap-1 text-[10px] font-bold text-green-700 hover:bg-green-100 px-2 py-1 rounded-md transition-colors border border-green-200 bg-green-50"
-                  title="Descargar Excel de esta célula"
-                >
-                  {exportandoId === liderId ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <FileSpreadsheet className="w-3 h-3" />
-                  )}
-                  Excel
-                </button>
-                <ChevronDown
-                  className={`h-5 w-5 text-gray-600 transition-transform ${isLiderAbierto ? "rotate-180" : ""}`}
-                />
+      <AnimatePresence mode="wait" initial={false}>
+        {categoria === "todos" ? (
+          <motion.div
+            key="lista-todos"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="overflow-x-auto rounded-xl border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm"
+          >
+            {miembrosTodos.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                No hay miembros{searchTerm ? " para esta búsqueda" : ""}.
               </div>
-            </div>
-
-            <motion.div
-              initial={false}
-              animate={{ height: isLiderAbierto ? "auto" : 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden"
+            ) : (
+              <table className="min-w-full text-xs">
+                <thead className="bg-sky-50 dark:bg-sky-950/40">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                      No.
+                    </th>
+                    <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                      Nombre
+                    </th>
+                    <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                      DPI
+                    </th>
+                    <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                      Teléfono
+                    </th>
+                    <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                      Edad
+                    </th>
+                    <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                      Ubicación
+                    </th>
+                    <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                      Líder
+                    </th>
+                    <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                      Grupo
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
+                  {miembrosTodos.map((row, index) => (
+                    <tr
+                      key={row.afiliado.id}
+                      className="hover:bg-gray-50 dark:hover:bg-neutral-800/50 uppercase"
+                    >
+                      <td className="px-4 py-2 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                        {index + 1}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap font-bold text-gray-900 dark:text-gray-100">
+                        {row.afiliado.nombres} {row.afiliado.apellidos}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap font-mono">
+                        {row.afiliado.dpi
+                          ? formatearDpi(row.afiliado.dpi)
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap font-mono normal-case">
+                        <TelefonoInline
+                          telefono={row.afiliado.telefono || ""}
+                        />
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap font-bold">
+                        {calcularEdad(row.afiliado.nacimiento)}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {row.afiliado.lugar_nombre || "—"}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap font-semibold text-sky-700 dark:text-sky-400">
+                        {row.liderNombre}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {row.grupo}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </motion.div>
+        ) : gruposDeCategoria.length === 0 ? (
+          <motion.div
+            key="empty"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="rounded-xl border border-dashed border-gray-200 dark:border-neutral-700 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+          >
+            No hay {categoriaCfg.titulo.toLowerCase()}
+            {searchTerm ? " para esta búsqueda" : ""}.
+          </motion.div>
+        ) : !grupoActivo ? (
+          <motion.div
+            key={`lista-${categoria}`}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="overflow-x-auto rounded-xl border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm"
+          >
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-100 dark:bg-neutral-800">
+                <tr>
+                  <th className="px-4 py-3 text-left font-bold text-gray-600 dark:text-gray-300 uppercase text-xs">
+                    No.
+                  </th>
+                  <th className="px-4 py-3 text-left font-bold text-gray-600 dark:text-gray-300 uppercase text-xs">
+                    Nombre
+                  </th>
+                  <th className="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-300 uppercase text-xs">
+                    Miembros
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
+                {gruposDeCategoria.map(({ lider, afiliados: list }, index) => (
+                  <tr
+                    key={lider.id}
+                    onClick={() => setLiderSeleccionadoId(lider.id)}
+                    className="cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-800/60 transition-colors"
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                      {index + 1}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap font-bold text-gray-900 dark:text-gray-100 uppercase">
+                      {lider.nombres} {lider.apellidos}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right font-black text-gray-800 dark:text-gray-200">
+                      {list.length}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </motion.div>
+        ) : (
+          <motion.div
+            key={`celula-${grupoActivo.lider.id}`}
+            initial={{ opacity: 0, y: 16, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.99 }}
+            transition={{ duration: 0.32, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="space-y-3"
+          >
+            <button
+              type="button"
+              onClick={() => setLiderSeleccionadoId(null)}
+              className="inline-flex items-center gap-2 text-sm font-bold text-blue-700 dark:text-blue-400 hover:underline"
             >
-              {(() => {
-                const liderRow = list.find((a) => !!a.es_lider) ?? list[0];
-                const titulares = list.filter((a) => !a.familiar_de && a.id !== liderRow?.id);
-                const familiaresPorTitular = new Map<string, Afiliado[]>();
-                list.forEach(a => {
-                  if (a.familiar_de) {
-                    if (!familiaresPorTitular.has(a.familiar_de)) familiaresPorTitular.set(a.familiar_de, []);
-                    familiaresPorTitular.get(a.familiar_de)!.push(a);
-                  }
-                });
+              <ArrowLeft className="h-4 w-4" />
+              Volver a {categoriaCfg.titulo}
+            </button>
 
-                const todosOrdenados: Array<{ afiliado: Afiliado; tipo: "lider" | "familiar" | "miembro"; depth: number }> = [];
-                if (liderRow) todosOrdenados.push({ afiliado: liderRow, tipo: "lider", depth: 0 });
-                if (liderRow && familiaresPorTitular.has(liderRow.id)) {
-                  familiaresPorTitular.get(liderRow.id)!.forEach(fam => todosOrdenados.push({ afiliado: fam, tipo: "familiar", depth: 1 }));
-                }
-                titulares.forEach(titular => {
-                  todosOrdenados.push({ afiliado: titular, tipo: "miembro", depth: 0 });
-                  if (familiaresPorTitular.has(titular.id)) {
-                    familiaresPorTitular.get(titular.id)!.forEach(fam => todosOrdenados.push({ afiliado: fam, tipo: "familiar", depth: 1 }));
-                  }
-                });
+            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm">
+              <div
+                className={`flex items-center justify-between gap-3 px-4 py-3 border-b dark:border-neutral-800 ${categoriaCfg.rowActive}`}
+              >
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Célula de
+                  </p>
+                  <h3 className="text-sm md:text-base font-black uppercase truncate text-gray-900 dark:text-gray-100">
+                    {grupoActivo.lider.nombres} {grupoActivo.lider.apellidos}
+                  </h3>
+                </div>
+                <span className="shrink-0 text-sm font-black text-gray-800 dark:text-gray-200">
+                  {grupoActivo.afiliados.length} miembro
+                  {grupoActivo.afiliados.length === 1 ? "" : "s"}
+                </span>
+              </div>
 
-                return (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full bg-white dark:bg-neutral-900 text-xs">
-                      <thead className="bg-gray-100 dark:bg-neutral-800">
-                        <tr>
-                          <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">No.</th>
-                          <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">Nombre</th>
-                          <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">DPI</th>
-                          <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">Teléfono</th>
-                          <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">Edad</th>
-                          <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">Ubicación</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
-                        {todosOrdenados.map(({ afiliado, tipo, depth }, index) => (
-                          <tr
-                            key={afiliado.id}
-                            className={`uppercase ${
-                              tipo === "lider"
-                                ? "bg-orange-50 dark:bg-orange-950/30 hover:bg-orange-100 dark:hover:bg-orange-950/50"
-                                : tipo === "familiar"
-                                ? "bg-purple-50/50 dark:bg-purple-950/30 hover:bg-purple-100/80 dark:hover:bg-purple-950/50"
-                                : "bg-blue-50/40 dark:bg-blue-950/20 hover:bg-blue-100/60 dark:hover:bg-blue-950/40"
-                            }`}
-                          >
-                            <td className={`px-4 py-2 whitespace-nowrap ${depth > 0 ? "pl-12" : ""}`}>
-                              {tipo === "lider" ? (
-                                <span className="flex items-center gap-1 text-orange-600 font-black">
-                                  <Crown className="w-3 h-3" /> {index + 1}
-                                </span>
-                              ) : tipo === "familiar" ? (
-                                <span className="flex items-center gap-1 text-purple-600 font-black">
-                                  <Heart className="w-3 h-3" /> {index + 1}
-                                </span>
-                              ) : (
-                                <span className="flex items-center gap-1 text-blue-600 font-black">
-                                  <User className="w-3 h-3" /> {index + 1}
-                                </span>
-                              )}
-                            </td>
-                            <td className={`px-4 py-2 whitespace-nowrap font-bold ${
-                              tipo === "lider" ? "text-orange-800" : tipo === "familiar" ? "text-purple-800" : "text-blue-800"
-                            }`}>
-                              {afiliado.nombres} {afiliado.apellidos}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap font-mono">{afiliado.dpi || "—"}</td>
-                            <td className="px-4 py-2 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono">{afiliado.telefono || "—"}</span>
-                                {afiliado.telefono && (
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <a
-                                      href={`tel:+502${afiliado.telefono.replace(/\D/g, "")}`}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="p-1 text-blue-600 hover:underline rounded transition-colors"
-                                      title="Llamar"
-                                    >
-                                      <Phone className="w-3.5 h-3.5 fill-current" />
-                                    </a>
-                                    <a
-                                      href={generarLinkWhatsapp(afiliado.telefono)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="p-1 text-green-600 hover:underline rounded transition-colors"
-                                      title="WhatsApp"
-                                    >
-                                      <MessageCircle className="w-3.5 h-3.5" />
-                                    </a>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap font-bold">{calcularEdad(afiliado.nacimiento)}</td>
-                            <td className="px-4 py-2 whitespace-nowrap">
-                              <div className="flex flex-col">
-                                <span className="font-bold text-gray-800">{afiliado.lugar_nombre || "—"}</span>
-                                {afiliado.sector_nombre && (
-                                  <span className="text-[10px] text-gray-500 uppercase font-medium mt-0.5">
-                                    Sector: {afiliado.sector_nombre}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()}
-            </motion.div>
-          </div>
-        );
-      })}
+              {grupoActivo.afiliados.length === 0 ? (
+                <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                  Este líder aún no tiene miembros
+                  {searchTerm ? " que coincidan con la búsqueda" : ""}.
+                </div>
+              ) : (
+                <table className="min-w-full text-xs">
+                  <thead className="bg-gray-100 dark:bg-neutral-800">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                        No.
+                      </th>
+                      <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                        Nombre
+                      </th>
+                      <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                        DPI
+                      </th>
+                      <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                        Teléfono
+                      </th>
+                      <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                        Edad
+                      </th>
+                      <th className="px-4 py-2 text-left font-bold text-gray-600 dark:text-gray-300 uppercase">
+                        Ubicación
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
+                    {[...grupoActivo.afiliados]
+                      .sort((a, b) =>
+                        compararNombres(
+                          `${a.nombres} ${a.apellidos}`,
+                          `${b.nombres} ${b.apellidos}`,
+                        ),
+                      )
+                      .map((afiliado, index) => (
+                        <motion.tr
+                          key={afiliado.id}
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{
+                            duration: 0.22,
+                            delay: Math.min(index * 0.02, 0.24),
+                            ease: [0.25, 0.46, 0.45, 0.94],
+                          }}
+                          className="hover:bg-gray-50 dark:hover:bg-neutral-800/50 uppercase"
+                        >
+                          <td className="px-4 py-2 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                            {index + 1}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap font-bold text-gray-900 dark:text-gray-100">
+                            {afiliado.nombres} {afiliado.apellidos}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap font-mono">
+                            {afiliado.dpi ? formatearDpi(afiliado.dpi) : "—"}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap font-mono normal-case">
+                            <TelefonoInline
+                              telefono={afiliado.telefono || ""}
+                            />
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap font-bold">
+                            {calcularEdad(afiliado.nacimiento)}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap">
+                            {afiliado.lugar_nombre || "—"}
+                          </td>
+                        </motion.tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

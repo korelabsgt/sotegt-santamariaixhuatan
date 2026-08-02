@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import { Typewriter } from "react-simple-typewriter";
 import { Button } from "@/components/ui/button";
+import { BrandSlogan } from "@/components/ui/BrandSlogan";
 import Swal from "sweetalert2";
 
 function PendingSignInButton({ isPending }: { isPending: boolean }) {
@@ -126,12 +127,15 @@ export function LoginForm() {
             ease: [0.16, 1, 0.3, 1] 
           }}
         >
-          <h1
-            className="font-serif text-2xl md:text-4xl font-bold leading-tight text-left my-5 bg-gradient-to-r from-blue-800 via-blue-400 to-blue-800 dark:from-blue-400 dark:via-blue-300 dark:to-blue-500 bg-[length:200%_auto] text-transparent bg-clip-text animate-text-shine"
-            style={{ fontFamily: "'DM Serif Display', serif" }}
-          >
-            Sistema de Organización <br /> Territorial Estratégica
-          </h1>
+          <div className="my-5">
+            <h1
+              className="font-serif text-2xl md:text-4xl font-bold leading-tight text-left bg-gradient-to-r from-blue-800 via-blue-400 to-blue-800 dark:from-blue-400 dark:via-blue-300 dark:to-blue-500 bg-[length:200%_auto] text-transparent bg-clip-text animate-text-shine"
+              style={{ fontFamily: "'DM Serif Display', serif" }}
+            >
+              Sistema de Organización <br /> Territorial Estratégica
+            </h1>
+            <BrandSlogan size="lg" />
+          </div>
         </motion.div>
       </motion.div>
 

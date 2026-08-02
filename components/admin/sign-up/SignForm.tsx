@@ -2,16 +2,28 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { signUpAction, updateUsuarioAction, obtenerEmailUsuarioAction } from "@/app/actions/usuarios";
+import {
+  signUpAction,
+  updateUsuarioAction,
+  obtenerEmailUsuarioAction,
+} from "@/app/actions/usuarios";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { ChevronUp } from "lucide-react";
+import { Check, ChevronUp } from "lucide-react";
 import { toast } from "@/lib/toast";
 import PasswordSection from "@/components/admin/sign-up/PasswordSection";
 import useUserData from "@/hooks/sesion/useUserData";
 import { createClient } from "@/utils/supabase/client";
 import { NUEVO_LIDER_SIMULADO } from "@/components/afiliados/datosSimulados";
+import {
+  PiBriefcaseDuotone,
+  PiBuildingsDuotone,
+  PiCodeDuotone,
+  PiMedalDuotone,
+  PiShieldCheckDuotone,
+} from "react-icons/pi";
+import type { IconType } from "react-icons";
 
 interface RolDisponible {
   id: number;
@@ -23,6 +35,79 @@ interface SignupFormProps {
   isModal?: boolean;
   initialData?: any;
   rolSesion?: string;
+  modoCrearSede?: boolean;
+  rolInicial?: "LIDER" | "EMPLEADO" | "ADMIN" | "SUPER" | null;
+}
+
+type RolVisual = {
+  label: string;
+  Icon: IconType;
+  text: string;
+  border: string;
+  bg: string;
+  check: string;
+};
+
+function estiloRol(nombreRaw: string): RolVisual {
+  const nombre = nombreRaw.toUpperCase();
+  if (nombre === "LIDER" || nombre === "LÍDER") {
+    return {
+      label: "Líder",
+      Icon: PiMedalDuotone,
+      text: "text-orange-600 dark:text-orange-400",
+      border: "border-orange-400 dark:border-orange-500",
+      bg: "bg-orange-50 dark:bg-orange-950/40",
+      check: "text-orange-600 dark:text-orange-400",
+    };
+  }
+  if (nombre === "EMPLEADO" || nombre === "TRABAJADOR") {
+    return {
+      label: "Empleado",
+      Icon: PiBriefcaseDuotone,
+      text: "text-violet-600 dark:text-violet-400",
+      border: "border-violet-400 dark:border-violet-500",
+      bg: "bg-violet-50 dark:bg-violet-950/40",
+      check: "text-violet-600 dark:text-violet-400",
+    };
+  }
+  if (nombre === "ADMIN" || nombre === "ADMINISTRADOR") {
+    return {
+      label: "Admin",
+      Icon: PiShieldCheckDuotone,
+      text: "text-indigo-600 dark:text-indigo-400",
+      border: "border-indigo-400 dark:border-indigo-500",
+      bg: "bg-indigo-50 dark:bg-indigo-950/40",
+      check: "text-indigo-600 dark:text-indigo-400",
+    };
+  }
+  if (nombre === "SUPER") {
+    return {
+      label: "Super",
+      Icon: PiCodeDuotone,
+      text: "text-emerald-600 dark:text-emerald-400",
+      border: "border-emerald-400 dark:border-emerald-500",
+      bg: "bg-emerald-50 dark:bg-emerald-950/40",
+      check: "text-emerald-600 dark:text-emerald-400",
+    };
+  }
+  if (nombre === "SEDE") {
+    return {
+      label: "Sede",
+      Icon: PiBuildingsDuotone,
+      text: "text-blue-600 dark:text-blue-400",
+      border: "border-blue-400 dark:border-blue-500",
+      bg: "bg-blue-50 dark:bg-blue-950/40",
+      check: "text-blue-600 dark:text-blue-400",
+    };
+  }
+  return {
+    label: nombreRaw,
+    Icon: PiShieldCheckDuotone,
+    text: "text-gray-700 dark:text-gray-200",
+    border: "border-gray-300 dark:border-neutral-600",
+    bg: "bg-gray-50 dark:bg-neutral-800",
+    check: "text-gray-600 dark:text-gray-300",
+  };
 }
 
 export function SignupForm({
@@ -31,6 +116,8 @@ export function SignupForm({
   isModal = false,
   initialData,
   rolSesion,
+  modoCrearSede = false,
+  rolInicial = null,
 }: SignupFormProps) {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -38,7 +125,9 @@ export function SignupForm({
   const rolUsuarioSesion = rolSesion ?? rolHook;
 
   const modoSimulacion =
-    !isEdit && rolUsuarioSesion?.toUpperCase() === "DOCUMENTADOR";
+    !isEdit &&
+    !modoCrearSede &&
+    rolUsuarioSesion?.toUpperCase() === "DOCUMENTADOR";
 
   const [simulacionLista, setSimulacionLista] = useState(false);
   const mostrarSkeleton = modoSimulacion && !simulacionLista;
@@ -47,10 +136,16 @@ export function SignupForm({
   const [rolesDisponibles, setRolesDisponibles] = useState<RolDisponible[]>([]);
   const [showPasswordAccordion, setShowPasswordAccordion] = useState(!isEdit);
 
-  const [nombres, setNombres] = useState(initialData?.nombres || "");
-  const [apellidos, setApellidos] = useState(initialData?.apellidos || "");
+  const [nombres, setNombres] = useState(
+    modoCrearSede ? "Sede" : initialData?.nombres || "",
+  );
+  const [apellidos, setApellidos] = useState(
+    modoCrearSede ? "Central" : initialData?.apellidos || "",
+  );
   const [email, setEmail] = useState(
-    initialData?.email?.replace(/@.*$/, "") || "",
+    modoCrearSede
+      ? "sede"
+      : initialData?.email?.replace(/@.*$/, "") || "",
   );
   const [password, setPassword] = useState("");
   const [confirmar, setConfirmar] = useState("");
@@ -119,17 +214,44 @@ export function SignupForm({
       if (r) {
         setRolesDisponibles(r);
         if (!initialData?.rol_id) {
-          const rolLider = r.find(
-            (role) =>
-              role.nombre.toUpperCase() === "LIDER" ||
-              role.nombre.toUpperCase() === "LÍDER",
-          );
-          if (rolLider) setRolId(rolLider.id.toString());
+          if (modoCrearSede) {
+            const rolSede = r.find(
+              (role) =>
+                role.id === 5 || role.nombre.toUpperCase() === "SEDE",
+            );
+            if (rolSede) setRolId(rolSede.id.toString());
+          } else if (rolInicial === "EMPLEADO") {
+            const rolEmpleado = r.find((role) => {
+              const n = role.nombre.toUpperCase();
+              return n === "EMPLEADO" || n === "TRABAJADOR";
+            });
+            if (rolEmpleado) setRolId(rolEmpleado.id.toString());
+          } else if (rolInicial === "ADMIN") {
+            const rolAdmin = r.find(
+              (role) => role.nombre.toUpperCase() === "ADMIN",
+            );
+            if (rolAdmin) setRolId(rolAdmin.id.toString());
+          } else if (
+            rolInicial === "SUPER" &&
+            rolUsuarioSesion?.toUpperCase() === "SUPER"
+          ) {
+            const rolSuper = r.find(
+              (role) => role.nombre.toUpperCase() === "SUPER",
+            );
+            if (rolSuper) setRolId(rolSuper.id.toString());
+          } else if (rolInicial === "LIDER" || !rolInicial) {
+            const rolLider = r.find(
+              (role) =>
+                role.nombre.toUpperCase() === "LIDER" ||
+                role.nombre.toUpperCase() === "LÍDER",
+            );
+            if (rolLider) setRolId(rolLider.id.toString());
+          }
         }
       }
     };
     fetchDatos();
-  }, [initialData]);
+  }, [initialData, modoCrearSede, rolInicial, rolUsuarioSesion]);
 
   useEffect(() => {
     if (!modoSimulacion) return;
@@ -147,9 +269,40 @@ export function SignupForm({
   }, [modoSimulacion]);
 
   const esSuperSesion = rolUsuarioSesion?.toUpperCase() === "SUPER";
-  const rolesParaSelector = rolesDisponibles.filter(
-    (r) => esSuperSesion || r.nombre !== "SUPER",
-  );
+  const rolFijoDesdeMenu =
+    Boolean(rolInicial) &&
+    !isEdit &&
+    !(rolInicial === "SUPER" && !esSuperSesion);
+  const editandoSede =
+    isEdit &&
+    ((initialData?.rol || "").toUpperCase() === "SEDE" ||
+      Number(initialData?.rol_id) === 5);
+  const rolSoloLectura =
+    (!isEdit && (modoCrearSede || rolFijoDesdeMenu)) || editandoSede;
+  const rolesParaSelector = rolesDisponibles.filter((r) => {
+    const nombre = r.nombre.toUpperCase().trim();
+    if (nombre === "DOCUMENTADOR") return false;
+    if (!esSuperSesion && nombre === "SUPER") return false;
+    if (modoCrearSede || editandoSede) return nombre === "SEDE";
+    if (rolFijoDesdeMenu) {
+      if (rolInicial === "EMPLEADO") {
+        return nombre === "EMPLEADO" || nombre === "TRABAJADOR";
+      }
+      if (rolInicial === "ADMIN") return nombre === "ADMIN";
+      if (rolInicial === "SUPER") return nombre === "SUPER";
+      return nombre === "LIDER" || nombre === "LÍDER";
+    }
+    return nombre !== "SEDE";
+  });
+
+  const tituloCreacion =
+    rolInicial === "EMPLEADO"
+      ? "Nuevo Usuario Empleado"
+      : rolInicial === "ADMIN"
+        ? "Nuevo Usuario Admin"
+        : rolInicial === "SUPER"
+          ? "Nuevo Usuario Super"
+          : "Nuevo Usuario Líder";
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -163,9 +316,15 @@ export function SignupForm({
     setLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    const finalEmail = `${email.trim()}@app.com`;
+    const localPart = email.trim().replace(/@.*$/, "").replace(/\s/g, "");
+    const finalEmail = `${localPart}@app.com`;
     formData.set("email", finalEmail);
-    if (isEdit) formData.append("id", initialData.user_id || initialData.id);
+    formData.set("nombres", nombres.trim());
+    formData.set("apellidos", apellidos.trim());
+    formData.set("rol_id", rol_id);
+    if (isEdit) {
+      formData.set("id", String(initialData.user_id || initialData.id || ""));
+    }
 
     let result;
     if (isEdit) {
@@ -185,15 +344,50 @@ export function SignupForm({
     }
   };
 
+  const renderRolCard = (r: RolDisponible) => {
+    const visual = estiloRol(r.nombre);
+    const seleccionado = rol_id === r.id.toString();
+    const Icon = visual.Icon;
+    return (
+      <button
+        key={r.id}
+        type="button"
+        disabled={rolSoloLectura}
+        onClick={() => {
+          if (!rolSoloLectura) setRolId(r.id.toString());
+        }}
+        className={`flex items-center gap-2.5 w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${
+          seleccionado
+            ? `${visual.bg} ${visual.border}`
+            : "border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-neutral-800"
+        } ${rolSoloLectura ? "cursor-default" : "cursor-pointer"}`}
+      >
+        <Icon className={`w-5 h-5 shrink-0 ${visual.text}`} />
+        <span
+          className={`flex-1 text-sm ${
+            seleccionado ? visual.text : "text-gray-800 dark:text-gray-100"
+          }`}
+        >
+          {visual.label}
+        </span>
+        {seleccionado && (
+          <Check className={`w-4 h-4 shrink-0 ${visual.check}`} />
+        )}
+      </button>
+    );
+  };
+
   return (
     <div className="flex flex-col w-full mx-auto md:max-w-xl gap-4 relative text-left">
       <div className="flex justify-between items-center border-b border-gray-200 dark:border-neutral-800 pb-3">
         <h3 className="text-xl font-bold text-blue-700 dark:text-blue-400">
           {isEdit
             ? "Editar Perfil de Acceso"
-            : modoSimulacion
-              ? "Nuevo Usuario Líder (Simulación)"
-              : "Nuevo Usuario Líder"}
+            : modoCrearSede
+              ? "Crear Usuario Sede"
+              : modoSimulacion
+                ? `${tituloCreacion} (Simulación)`
+                : tituloCreacion}
         </h3>
         <button
           type="button"
@@ -228,6 +422,7 @@ export function SignupForm({
                 name="nombres"
                 value={nombres}
                 onChange={(e) => setNombres(e.target.value)}
+                readOnly={modoCrearSede}
                 className="h-12 text-lg bg-white dark:bg-neutral-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-neutral-600"
               />
             </div>
@@ -239,6 +434,7 @@ export function SignupForm({
                 name="apellidos"
                 value={apellidos}
                 onChange={(e) => setApellidos(e.target.value)}
+                readOnly={modoCrearSede}
                 className="h-12 text-lg bg-white dark:bg-neutral-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-neutral-600"
               />
             </div>
@@ -255,6 +451,7 @@ export function SignupForm({
               onChange={(e) =>
                 setEmail(e.target.value.replace(/@.*$/, "").replace(/\s/g, ""))
               }
+              readOnly={modoCrearSede}
               placeholder="Ingrese su usuario"
               className="h-12 text-lg bg-white dark:bg-neutral-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-neutral-600"
             />
@@ -264,19 +461,16 @@ export function SignupForm({
             <Label className="text-gray-900 dark:text-gray-100">
               Asignar Rol
             </Label>
-            <select
-              name="rol_id"
-              value={rol_id}
-              onChange={(e) => setRolId(e.target.value)}
-              className="w-full border border-gray-300 dark:border-neutral-600 rounded h-12 px-3 text-lg bg-white dark:bg-neutral-800 text-gray-900 dark:text-gray-100"
-            >
-              <option value="">Seleccione un rol...</option>
-              {rolesParaSelector.map((r) => (
-                <option key={r.id} value={r.id.toString()}>
-                  {r.nombre}
-                </option>
-              ))}
-            </select>
+            <input type="hidden" name="rol_id" value={rol_id} />
+            {rolSoloLectura ? (
+              <div className="mt-1">
+                {rolesParaSelector.map((r) => renderRolCard(r))}
+              </div>
+            ) : (
+              <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {rolesParaSelector.map((r) => renderRolCard(r))}
+              </div>
+            )}
           </div>
 
           <div className="border border-gray-200 dark:border-neutral-700 rounded-md bg-gray-50 dark:bg-neutral-800/60 py-2 px-2">
@@ -336,9 +530,11 @@ export function SignupForm({
               ? "Procesando..."
               : isEdit
                 ? "Actualizar Datos"
-                : modoSimulacion
-                  ? "Simular Creación"
-                  : "Crear Acceso"}
+                : modoCrearSede
+                  ? "Crear Sede"
+                  : modoSimulacion
+                    ? "Simular Creación"
+                    : "Crear Acceso"}
           </Button>
         </form>
       )}

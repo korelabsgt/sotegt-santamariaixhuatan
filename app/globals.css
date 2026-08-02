@@ -1,4 +1,6 @@
-@import 'react-toastify/dist/ReactToastify.css'; /* ¡AÑADA ESTA LÍNEA AL PRINCIPIO! */
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Plus+Jakarta+Sans:wght@500;600&display=swap');
+
+@import 'react-toastify/dist/ReactToastify.css';
 
 @tailwind base;
 @tailwind components;

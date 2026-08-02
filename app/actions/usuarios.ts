@@ -1,19 +1,25 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import supabaseAdmin from "@/utils/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { invalidateCachedAuthUsers } from "@/components/afiliados/actions/cache";
 
 export const deleteUserAccountAction = async (userId: string) => {
   if (!userId) return { error: "ID de usuario no proporcionado." };
 
   try {
-    // 1. Eliminar logs asociados para evitar errores de llave foránea
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user?.id && user.id === userId) {
+      return { error: "No puedes eliminar tu propio perfil." };
+    }
+
     await supabaseAdmin.from("logs").delete().eq("user_id", userId);
 
-    // 2. Eliminar perfil asociado
     const { error: perfilError } = await supabaseAdmin
       .from("info_perfil")
       .delete()
@@ -21,10 +27,8 @@ export const deleteUserAccountAction = async (userId: string) => {
 
     if (perfilError) {
       console.error("Error al eliminar perfil de usuario:", perfilError.message);
-      // Continuamos intentando eliminar la cuenta de auth de todos modos
     }
 
-    // 3. Eliminar la cuenta de autenticación
     const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (error) {
@@ -32,6 +36,7 @@ export const deleteUserAccountAction = async (userId: string) => {
       return { error: error.message };
     }
 
+    invalidateCachedAuthUsers();
     revalidatePath("/dashboard/usuarios");
     return { success: "Usuario eliminado correctamente." };
   } catch (err: any) {
@@ -41,12 +46,15 @@ export const deleteUserAccountAction = async (userId: string) => {
 };
 
 export const updateUsuarioAction = async (formData: FormData) => {
-  const supabase = await createClient();
-
   const id = formData.get("id") as string;
   const nombres = formData.get("nombres") as string;
   const apellidos = formData.get("apellidos") as string;
-  const email = formData.get("email") as string;
+  const emailRaw = (formData.get("email") as string | null)?.trim() || "";
+  const email = emailRaw
+    ? emailRaw.includes("@")
+      ? emailRaw
+      : `${emailRaw}@app.com`
+    : "";
   const rol_id = formData.get("rol_id") as string;
   const password = formData.get("password") as string;
   const nivelCompromisoRaw = formData.get("nivel_compromiso");
@@ -56,6 +64,8 @@ export const updateUsuarioAction = async (formData: FormData) => {
     nivelCompromisoRaw === "alto"
       ? nivelCompromisoRaw
       : undefined;
+
+  if (!id) return { error: "ID de usuario no proporcionado." };
 
   const perfilUpdate: {
     nombres: string;
@@ -69,15 +79,22 @@ export const updateUsuarioAction = async (formData: FormData) => {
   };
   if (nivel_compromiso) perfilUpdate.nivel_compromiso = nivel_compromiso;
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await supabaseAdmin
     .from("info_perfil")
     .update(perfilUpdate)
     .eq("user_id", id);
 
   if (updateError) return { error: updateError.message };
 
-  const authUpdateData: any = {};
-  if (email) authUpdateData.email = email;
+  const authUpdateData: {
+    email?: string;
+    password?: string;
+    email_confirm?: boolean;
+  } = {};
+  if (email) {
+    authUpdateData.email = email;
+    authUpdateData.email_confirm = true;
+  }
   if (password && password.trim() !== "") authUpdateData.password = password;
 
   if (Object.keys(authUpdateData).length > 0) {
@@ -88,6 +105,7 @@ export const updateUsuarioAction = async (formData: FormData) => {
     if (authError) return { error: authError.message };
   }
 
+  invalidateCachedAuthUsers();
   revalidatePath("/dashboard/usuarios");
   return { success: "Usuario actualizado correctamente" };
 };
@@ -142,6 +160,7 @@ export const signUpAction = async (formData: FormData) => {
     return { error: "Error al guardar perfil. Se ha revertido la cuenta." };
   }
 
+  invalidateCachedAuthUsers();
   revalidatePath("/dashboard/usuarios");
   return { success: "Usuario creado con éxito." };
 };

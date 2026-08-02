@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
+import { getCachedAuthUsers } from "./cache";
 
 export async function cargarDashboardAction() {
   console.time("🚀 TOTAL");
@@ -70,6 +71,8 @@ export async function cargarDashboardAction() {
   const conteoRaw = conteoRes.data || [];
   const sectores = sectoresRes.data || [];
   const sectorMap = new Map(sectores.map((s) => [s.id, s.nombre]));
+  const authUsers = await getCachedAuthUsers();
+  const emailMap = new Map(authUsers.map((u) => [u.id, u.email || ""]));
 
   const conteoMap = new Map<
     string,
@@ -94,17 +97,17 @@ export async function cargarDashboardAction() {
   });
 
   const usuarios = perfiles.map((p: any) => ({
-      id: p.user_id,
-      email: "",
-      nombres: p.nombres,
-      apellidos: p.apellidos,
-      activo: p.activo,
-      rol: p.roles?.nombre,
-      rol_id: p.rol_id,
-      conteoAfiliados: conteoMap.get(p.user_id)?.total || 0,
-      conteoTitulares: conteoMap.get(p.user_id)?.titulares || 0,
-      conteoFamiliares: conteoMap.get(p.user_id)?.familiares || 0,
-    }));
+    id: p.user_id,
+    email: emailMap.get(p.user_id) || "",
+    nombres: p.nombres,
+    apellidos: p.apellidos,
+    activo: p.activo,
+    rol: p.roles?.nombre,
+    rol_id: p.rol_id,
+    conteoAfiliados: conteoMap.get(p.user_id)?.total || 0,
+    conteoTitulares: conteoMap.get(p.user_id)?.titulares || 0,
+    conteoFamiliares: conteoMap.get(p.user_id)?.familiares || 0,
+  }));
 
   const lugares = (lugaresRes.data || []).map((l) => ({
     id: l.id,
