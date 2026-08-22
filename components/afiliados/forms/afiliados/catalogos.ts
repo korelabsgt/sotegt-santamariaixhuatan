@@ -143,6 +143,12 @@ export async function obtenerLugaresAction(): Promise<Lugar[]> {
 
 export type Sector = { id: number; nombre: string };
 
+function calcularSiguienteId(ids: number[]): number {
+  const validos = ids.filter((id) => id > 0);
+  if (validos.length === 0) return 1;
+  return Math.max(...validos) + 1;
+}
+
 export async function crearLugarAction(nombre: string, sector_id: number): Promise<Lugar | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -153,7 +159,6 @@ export async function crearLugarAction(nombre: string, sector_id: number): Promi
   if (error) return null;
   if (!data) return null;
 
-  // Resolve sector name
   const { data: sector } = await supabase.from("sectores").select("nombre").eq("id", sector_id).single();
   return {
     id: data.id,
@@ -201,37 +206,99 @@ export async function crearBeneficioAction(nombre: string): Promise<Beneficio | 
   return data;
 }
 
-export async function crearSectorAction(nombre: string): Promise<Sector | null> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("sectores")
-    .insert({ nombre: nombre.trim() })
-    .select("id, nombre")
-    .single();
-  if (error) return null;
-  return data;
-}
+export async function crearSectorAction(
+  nombre: string,
+  id?: number,
+): Promise<Sector | null> {
+  if (!(await esAdminCatalogo())) return null;
 
-export async function actualizarSectorAction(id: number, nombre: string): Promise<Sector | null> {
-  const supabase = await createClient();
   const trimmed = nombre.trim();
   if (!trimmed) return null;
 
-  const { data: existing } = await supabase
+  const { data: existentes } = await supabaseAdmin.from("sectores").select("id");
+  const ids = (existentes ?? []).map((s) => s.id);
+  const newId = id ?? calcularSiguienteId(ids);
+
+  if (newId <= 0 || ids.includes(newId)) return null;
+
+  const { data: nombreExistente } = await supabaseAdmin
     .from("sectores")
     .select("id")
     .ilike("nombre", trimmed)
-    .neq("id", id)
     .maybeSingle();
-  if (existing) return null;
+  if (nombreExistente) return null;
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
+    .from("sectores")
+    .insert({ id: newId, nombre: trimmed })
+    .select("id, nombre")
+    .single();
+  if (error || !data) return null;
+  return data;
+}
+
+export async function actualizarSectorAction(
+  id: number,
+  nombre: string,
+  nuevoId?: number,
+): Promise<Sector | null> {
+  if (!(await esAdminCatalogo())) return null;
+
+  const trimmed = nombre.trim();
+  if (!trimmed || id === 0) return null;
+
+  const targetId = nuevoId ?? id;
+  if (targetId <= 0) return null;
+
+  const { data: todos } = await supabaseAdmin.from("sectores").select("id, nombre");
+  const sectores = todos ?? [];
+
+  if (sectores.some((s) => s.id === targetId && s.id !== id)) return null;
+  if (sectores.some((s) => s.id !== id && s.nombre.toLowerCase() === trimmed.toLowerCase()))
+    return null;
+
+  if (targetId !== id) {
+    const tempNombre = `__temp_${id}_${Date.now()}__`;
+    const { error: renameError } = await supabaseAdmin
+      .from("sectores")
+      .update({ nombre: tempNombre })
+      .eq("id", id);
+    if (renameError) return null;
+
+    const { error: insertError } = await supabaseAdmin
+      .from("sectores")
+      .insert({ id: targetId, nombre: trimmed });
+    if (insertError) {
+      await supabaseAdmin.from("sectores").update({ nombre: trimmed }).eq("id", id);
+      return null;
+    }
+
+    const { error: lugaresError } = await supabaseAdmin
+      .from("lugares")
+      .update({ sector_id: targetId })
+      .eq("sector_id", id);
+    if (lugaresError) {
+      await supabaseAdmin.from("sectores").delete().eq("id", targetId);
+      await supabaseAdmin.from("sectores").update({ nombre: trimmed }).eq("id", id);
+      return null;
+    }
+
+    const { error: deleteError } = await supabaseAdmin
+      .from("sectores")
+      .delete()
+      .eq("id", id);
+    if (deleteError) return null;
+
+    return { id: targetId, nombre: trimmed };
+  }
+
+  const { data, error } = await supabaseAdmin
     .from("sectores")
     .update({ nombre: trimmed })
     .eq("id", id)
     .select("id, nombre")
     .single();
-  if (error) return null;
+  if (error || !data) return null;
   return data;
 }
 

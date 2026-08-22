@@ -100,6 +100,7 @@ export default function ConfiguracionSistema({
   const [creandoLugar, setCreandoLugar] = useState(false);
   const [editandoSectorId, setEditandoSectorId] = useState<number | null>(null);
   const [editandoSectorNombre, setEditandoSectorNombre] = useState("");
+  const [editandoSectorNumero, setEditandoSectorNumero] = useState("");
   const [guardandoSector, setGuardandoSector] = useState(false);
   const [editandoLugarId, setEditandoLugarId] = useState<number | null>(null);
   const [editandoLugarNombre, setEditandoLugarNombre] = useState("");
@@ -153,12 +154,20 @@ export default function ConfiguracionSistema({
     setLugarQuery("");
   }, [sectorSeleccionado]);
 
+  const calcularSiguienteIdSector = (lista: Sector[]) => {
+    const ids = lista.filter((s) => s.id > 0).map((s) => s.id);
+    if (ids.length === 0) return 1;
+    return Math.max(...ids) + 1;
+  };
+
   const handleCrearSector = async () => {
     if (!puedeCrearSector) return;
 
+    const siguienteId = calcularSiguienteIdSector(sectores);
+
     const confirmacion = await Swal.fire({
       title: "¿Agregar sector?",
-      text: `Se creará el sector "${sectorQuery.trim()}".`,
+      text: `Se creará el sector ${siguienteId}: "${sectorQuery.trim()}".`,
       icon: "question",
       showCancelButton: true,
       confirmButtonColor: "#d97706",
@@ -169,7 +178,7 @@ export default function ConfiguracionSistema({
     if (!confirmacion.isConfirmed) return;
 
     setCreandoSector(true);
-    const nuevo = await crearSectorAction(sectorQuery.trim());
+    const nuevo = await crearSectorAction(sectorQuery.trim(), siguienteId);
     if (nuevo) {
       setSectores((prev) =>
         [...prev, nuevo].sort((a, b) => {
@@ -178,10 +187,8 @@ export default function ConfiguracionSistema({
           return a.id - b.id;
         }),
       );
-      setSectorSeleccionado(nuevo.id);
-      const formatted =
-        nuevo.id === 0 ? nuevo.nombre : `Sector ${nuevo.id}: ${nuevo.nombre}`;
-      setSectorQuery(formatted);
+      setSectorSeleccionado(null);
+      setSectorQuery("");
       showSuccessToast(`Sector "${nuevo.nombre}" creado`);
     } else {
       showErrorToast("Error al crear el sector");
@@ -221,34 +228,88 @@ export default function ConfiguracionSistema({
   const formatSectorLabel = (s: Sector) =>
     s.id === 0 ? s.nombre : `Sector ${s.id}: ${s.nombre}`;
 
+  const renderSectorLabel = (s: Sector) => {
+    if (s.id === 0) {
+      return (
+        <span className="font-extrabold text-amber-600 dark:text-amber-400">
+          {s.nombre}
+        </span>
+      );
+    }
+    return (
+      <>
+        <span className="font-extrabold tracking-tight text-amber-600 dark:text-amber-400">
+          Sector {s.id}
+        </span>
+        <span className="font-medium text-gray-500 dark:text-gray-400">
+          : {s.nombre}
+        </span>
+      </>
+    );
+  };
+
   const iniciarEdicionSector = (s: Sector) => {
     setEditandoSectorId(s.id);
     setEditandoSectorNombre(s.nombre);
+    setEditandoSectorNumero(s.id === 0 ? "" : String(s.id));
   };
 
   const cancelarEdicionSector = () => {
     setEditandoSectorId(null);
     setEditandoSectorNombre("");
+    setEditandoSectorNumero("");
   };
 
   const handleGuardarSector = async () => {
     if (editandoSectorId === null || editandoSectorNombre.trim().length < 2)
       return;
+
+    const numeroParsed = parseInt(editandoSectorNumero, 10);
+    if (editandoSectorId !== 0) {
+      if (!editandoSectorNumero.trim() || isNaN(numeroParsed) || numeroParsed <= 0) {
+        showWarningToast("El número de sector debe ser mayor a 0");
+        return;
+      }
+      const duplicado = sectores.some(
+        (s) => s.id === numeroParsed && s.id !== editandoSectorId,
+      );
+      if (duplicado) {
+        showWarningToast("Ya existe un sector con ese número");
+        return;
+      }
+    }
+
     setGuardandoSector(true);
+    const nuevoId =
+      editandoSectorId === 0 ? undefined : numeroParsed;
     const actualizado = await actualizarSectorAction(
       editandoSectorId,
       editandoSectorNombre,
+      nuevoId,
     );
     if (actualizado) {
+      const idAnterior = editandoSectorId;
       setSectores((prev) =>
         prev
-          .map((s) => (s.id === actualizado.id ? actualizado : s))
+          .map((s) => (s.id === idAnterior ? actualizado : s))
           .sort((a, b) => {
             if (a.id === 0) return 1;
             if (b.id === 0) return -1;
             return a.id - b.id;
           }),
       );
+      if (idAnterior !== actualizado.id) {
+        setLugares((prev) =>
+          prev.map((l) =>
+            l.sector_id === idAnterior
+              ? { ...l, sector_id: actualizado.id }
+              : l,
+          ),
+        );
+        if (sectorSeleccionado === idAnterior) {
+          setSectorSeleccionado(actualizado.id);
+        }
+      }
       if (sectorSeleccionado === actualizado.id) {
         setSectorQuery(formatSectorLabel(actualizado));
       }
@@ -711,6 +772,23 @@ export default function ConfiguracionSistema({
                           >
                             {editandoSectorId === s.id ? (
                               <div className="flex items-center gap-1 flex-1 px-2 py-1.5">
+                                {s.id !== 0 && (
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={editandoSectorNumero}
+                                    onChange={(e) =>
+                                      setEditandoSectorNumero(e.target.value)
+                                    }
+                                    className="w-12 h-8 px-1 border border-amber-300 dark:border-amber-700 rounded text-sm text-center bg-white dark:bg-neutral-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter")
+                                        handleGuardarSector();
+                                      if (e.key === "Escape")
+                                        cancelarEdicionSector();
+                                    }}
+                                  />
+                                )}
                                 <input
                                   type="text"
                                   value={editandoSectorNombre}
@@ -718,7 +796,7 @@ export default function ConfiguracionSistema({
                                     setEditandoSectorNombre(e.target.value)
                                   }
                                   className="flex-1 h-8 px-2 border border-amber-300 dark:border-amber-700 rounded text-sm bg-white dark:bg-neutral-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                                  autoFocus
+                                  autoFocus={s.id === 0}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter")
                                       handleGuardarSector();
@@ -754,13 +832,11 @@ export default function ConfiguracionSistema({
                                     setSectorSeleccionado(s.id);
                                     setSectorQuery(formatSectorLabel(s));
                                   }}
-                                  className={`flex-1 text-left px-3 py-2 text-sm flex items-center justify-between ${
-                                    sectorSeleccionado === s.id
-                                      ? "font-bold"
-                                      : ""
-                                  }`}
+                                  className="flex-1 text-left px-3 py-2.5 text-base flex items-center justify-between gap-2"
                                 >
-                                  {formatSectorLabel(s)}
+                                  <span className="truncate">
+                                    {renderSectorLabel(s)}
+                                  </span>
                                   {sectorSeleccionado === s.id && (
                                     <Check className="w-3 h-3 text-amber-600" />
                                   )}
@@ -916,14 +992,14 @@ export default function ConfiguracionSistema({
                   </div>
 
                   {!sectorSeleccionado && (
-                    <p className="text-[9px] text-amber-600 dark:text-amber-400 italic">
+                    <p className="text-sm text-amber-600 dark:text-amber-400 italic">
                       Selecciona un sector existente para poder gestionar sus
                       lugares.
                     </p>
                   )}
 
                   <div className="pt-4 border-t border-amber-100 dark:border-amber-900 mt-4 flex flex-col gap-3">
-                    <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium italic text-center">
+                    <p className="text-sm text-amber-700 dark:text-amber-400 font-medium italic text-center">
                       * Los cambios en sectores y lugares se guardan
                       automáticamente.
                     </p>
