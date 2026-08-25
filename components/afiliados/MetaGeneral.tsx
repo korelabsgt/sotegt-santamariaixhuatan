@@ -2,12 +2,17 @@
 
 import { Building2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { PiBriefcaseDuotone, PiMedalDuotone } from "react-icons/pi";
+import {
+  PiBriefcaseDuotone,
+  PiListChecksDuotone,
+  PiMedalDuotone,
+} from "react-icons/pi";
 
 interface Props {
   totalSede: number;
   totalLideres: number;
   totalTrabajadores: number;
+  totalPlanilla?: number;
   objetivoTotal?: number;
 }
 
@@ -15,9 +20,10 @@ export default function MetaGeneral({
   totalSede,
   totalLideres,
   totalTrabajadores,
+  totalPlanilla = 0,
   objetivoTotal = 0,
 }: Props) {
-  const total = totalSede + totalLideres + totalTrabajadores;
+  const total = totalSede + totalLideres + totalTrabajadores + totalPlanilla;
   const objetivo = objetivoTotal > 0 ? objetivoTotal : 0;
   const pct = (n: number) =>
     objetivo > 0 ? Math.min((n / objetivo) * 100, 100) : 0;
@@ -46,14 +52,20 @@ export default function MetaGeneral({
         />
         <motion.div
           initial={{ width: 0 }}
+          animate={{ width: `${pct(totalPlanilla)}%` }}
+          transition={{ duration: 1, ease: "easeOut", delay: 0.08 }}
+          className="bg-rose-500 h-full shrink-0"
+        />
+        <motion.div
+          initial={{ width: 0 }}
           animate={{ width: `${pct(totalLideres)}%` }}
-          transition={{ duration: 1, ease: "easeOut", delay: 0.1 }}
+          transition={{ duration: 1, ease: "easeOut", delay: 0.12 }}
           className="bg-orange-500 h-full shrink-0"
         />
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${pct(totalTrabajadores)}%` }}
-          transition={{ duration: 1, ease: "easeOut", delay: 0.15 }}
+          transition={{ duration: 1, ease: "easeOut", delay: 0.16 }}
           className="bg-violet-500 h-full shrink-0"
         />
       </div>
@@ -61,6 +73,10 @@ export default function MetaGeneral({
         <span className="flex items-center gap-1.5 text-blue-700 dark:text-blue-400">
           <Building2 className="h-4 w-4 shrink-0" />
           Sede: {totalSede.toLocaleString()}
+        </span>
+        <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+          <PiListChecksDuotone className="h-4 w-4 shrink-0" />
+          Planilla: {totalPlanilla.toLocaleString()}
         </span>
         <span className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400">
           <PiMedalDuotone className="h-4 w-4 shrink-0" />

@@ -20,6 +20,7 @@ import {
   PiBriefcaseDuotone,
   PiBuildingsDuotone,
   PiCodeDuotone,
+  PiListChecksDuotone,
   PiMedalDuotone,
   PiShieldCheckDuotone,
 } from "react-icons/pi";
@@ -36,7 +37,7 @@ interface SignupFormProps {
   initialData?: any;
   rolSesion?: string;
   modoCrearSede?: boolean;
-  rolInicial?: "LIDER" | "EMPLEADO" | "ADMIN" | "SUPER" | null;
+  rolInicial?: "LIDER" | "EMPLEADO" | "PLANILLA" | "ADMIN" | "SUPER" | null;
 }
 
 type RolVisual = {
@@ -68,6 +69,16 @@ function estiloRol(nombreRaw: string): RolVisual {
       border: "border-violet-400 dark:border-violet-500",
       bg: "bg-violet-50 dark:bg-violet-950/40",
       check: "text-violet-600 dark:text-violet-400",
+    };
+  }
+  if (nombre === "PLANILLA") {
+    return {
+      label: "Planilla",
+      Icon: PiListChecksDuotone,
+      text: "text-rose-600 dark:text-rose-400",
+      border: "border-rose-400 dark:border-rose-500",
+      bg: "bg-rose-50 dark:bg-rose-950/40",
+      check: "text-rose-600 dark:text-rose-400",
     };
   }
   if (nombre === "ADMIN" || nombre === "ADMINISTRADOR") {
@@ -226,6 +237,11 @@ export function SignupForm({
               return n === "EMPLEADO" || n === "TRABAJADOR";
             });
             if (rolEmpleado) setRolId(rolEmpleado.id.toString());
+          } else if (rolInicial === "PLANILLA") {
+            const rolPlanilla = r.find(
+              (role) => role.nombre.toUpperCase() === "PLANILLA",
+            );
+            if (rolPlanilla) setRolId(rolPlanilla.id.toString());
           } else if (rolInicial === "ADMIN") {
             const rolAdmin = r.find(
               (role) => role.nombre.toUpperCase() === "ADMIN",
@@ -288,6 +304,7 @@ export function SignupForm({
       if (rolInicial === "EMPLEADO") {
         return nombre === "EMPLEADO" || nombre === "TRABAJADOR";
       }
+      if (rolInicial === "PLANILLA") return nombre === "PLANILLA";
       if (rolInicial === "ADMIN") return nombre === "ADMIN";
       if (rolInicial === "SUPER") return nombre === "SUPER";
       return nombre === "LIDER" || nombre === "LÍDER";
@@ -298,11 +315,13 @@ export function SignupForm({
   const tituloCreacion =
     rolInicial === "EMPLEADO"
       ? "Nuevo Usuario Empleado"
-      : rolInicial === "ADMIN"
-        ? "Nuevo Usuario Admin"
-        : rolInicial === "SUPER"
-          ? "Nuevo Usuario Super"
-          : "Nuevo Usuario Líder";
+      : rolInicial === "PLANILLA"
+        ? "Nuevo Usuario Planilla"
+        : rolInicial === "ADMIN"
+          ? "Nuevo Usuario Admin"
+          : rolInicial === "SUPER"
+            ? "Nuevo Usuario Super"
+            : "Nuevo Usuario Líder";
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

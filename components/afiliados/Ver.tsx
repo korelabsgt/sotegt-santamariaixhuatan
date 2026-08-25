@@ -25,6 +25,7 @@ import {
   PiChatCircleDotsDuotone,
   PiClipboardTextDuotone,
   PiCodeDuotone,
+  PiListChecksDuotone,
   PiMedalDuotone,
   PiShieldCheckDuotone,
   PiUsersThreeDuotone,
@@ -48,7 +49,7 @@ import MetaGeneral from "./MetaGeneral";
 import ModalBienvenida from "./ModalBienvenida";
 import Padron from "./Padron";
 import type { Afiliado, Lider } from "./esquemas";
-import { esRolEmpleado, esUsuarioSede } from "./esquemas";
+import { esRolEmpleado, esRolPlanilla, esUsuarioSede } from "./esquemas";
 import Form from "./forms/afiliados/Afiliados";
 import ReporteLideresClasificacion from "./reportes/ReporteLideresClasificacion";
 import { eliminar } from "./acciones";
@@ -69,6 +70,7 @@ type Tab =
   | "Lideres"
   | "Afiliados"
   | "Trabajadores"
+  | "Planilla"
   | "Padron"
   | "Administrativos"
   | "Mensajes";
@@ -108,6 +110,12 @@ const TAB_THEMES: Record<
     activeIconText: "text-violet-600 dark:text-violet-400",
     lineBg: "bg-violet-500 dark:bg-violet-400",
   },
+  Planilla: {
+    activeText: "text-rose-600 dark:text-rose-400",
+    activeIconBg: "bg-rose-100 dark:bg-rose-950/60",
+    activeIconText: "text-rose-600 dark:text-rose-400",
+    lineBg: "bg-rose-500 dark:bg-rose-400",
+  },
   Padron: {
     activeText: "text-teal-700 dark:text-teal-400",
     activeIconBg: "bg-teal-100 dark:bg-teal-950/60",
@@ -132,6 +140,7 @@ const tabEase = [0.25, 0.46, 0.45, 0.94] as const;
 
 const TAB_ORDER: Tab[] = [
   "Sede",
+  "Planilla",
   "Lideres",
   "Trabajadores",
   "Afiliados",
@@ -172,7 +181,7 @@ export default function Ver() {
   const [signupFormKey, setSignupFormKey] = useState(0);
   const [modoCrearSede, setModoCrearSede] = useState(false);
   const [rolCreacionInicial, setRolCreacionInicial] = useState<
-    "LIDER" | "EMPLEADO" | "ADMIN" | "SUPER" | null
+    "LIDER" | "EMPLEADO" | "PLANILLA" | "ADMIN" | "SUPER" | null
   >(null);
 
   const [afiliadoParaEditar, setAfiliadoParaEditar] = useState<Afiliado | null>(
@@ -296,7 +305,12 @@ export default function Ver() {
     rolesAdmin.includes((u.rol || "").toUpperCase()),
   );
   const trabajadores = allUsers.filter((u) => esRolEmpleado(u.rol));
+  const usuariosPlanilla = allUsers.filter((u) => esRolPlanilla(u.rol));
   const totalAfiliadosTrabajadores = trabajadores.reduce(
+    (acc, u) => acc + (u.conteoAfiliados || 0),
+    0,
+  );
+  const totalAfiliadosPlanilla = usuariosPlanilla.reduce(
     (acc, u) => acc + (u.conteoAfiliados || 0),
     0,
   );
@@ -329,15 +343,28 @@ export default function Ver() {
     );
   })();
 
-  const lideresParaFormulario = esAdminOSuper
-    ? lideresVisibles
-    : lideresVisibles.filter((l) => l.id === userId);
+  const lideresParaFormulario = (() => {
+    const pool = [...lideresVisibles, ...trabajadores, ...usuariosPlanilla];
+    const vistos = new Set<string>();
+    const unicos = pool.filter((l) => {
+      if (vistos.has(l.id)) return false;
+      vistos.add(l.id);
+      return true;
+    });
+    return esAdminOSuper
+      ? unicos
+      : unicos.filter((l) => l.id === userId);
+  })();
 
   const totalLideresRegistrados = lideresBase.length;
   const totalEmpleadosRegistrados = trabajadores.length;
+  const totalPlanillaRegistrados = usuariosPlanilla.length;
   const totalAdministrativosRegistrados = administrativos.length;
   const totalMiembrosGeneral =
-    totalAfiliadosSede + totalAfiliadosLideres + totalAfiliadosTrabajadores;
+    totalAfiliadosSede +
+    totalAfiliadosLideres +
+    totalAfiliadosTrabajadores +
+    totalAfiliadosPlanilla;
 
   const cargandoLideres = isDashboardLoading;
   const cargandoMiembros = isLoadingAfiliados || cargandoLideres;
@@ -354,7 +381,7 @@ export default function Ver() {
   };
 
   const handleOpenCreateUsuarioModal = (
-    rol: "LIDER" | "EMPLEADO" | "ADMIN" | "SUPER",
+    rol: "LIDER" | "EMPLEADO" | "PLANILLA" | "ADMIN" | "SUPER",
   ) => {
     if (rol === "SUPER" && !puedeCrearRolSuper) return;
     setLiderAEditar(null);
@@ -544,6 +571,7 @@ export default function Ver() {
               totalSede={totalAfiliadosSede}
               totalLideres={totalAfiliadosLideres}
               totalTrabajadores={totalAfiliadosTrabajadores}
+              totalPlanilla={totalAfiliadosPlanilla}
               objetivoTotal={configSis?.objetivo_total || 0}
             />
             {miPerfilGlobal ? (
@@ -568,6 +596,7 @@ export default function Ver() {
               totalSede={totalAfiliadosSede}
               totalLideres={totalAfiliadosLideres}
               totalTrabajadores={totalAfiliadosTrabajadores}
+              totalPlanilla={totalAfiliadosPlanilla}
               objetivoTotal={configSis?.objetivo_total || 0}
             />
             <div className="mb-6 w-full min-w-0 bg-white dark:bg-neutral-950">
@@ -579,6 +608,13 @@ export default function Ver() {
                       label: "Sede",
                       count: totalAfiliadosSede,
                       icon: PiBuildingsDuotone,
+                      show: true,
+                    },
+                    {
+                      id: "Planilla" as Tab,
+                      label: "Planilla",
+                      count: totalPlanillaRegistrados,
+                      icon: PiListChecksDuotone,
                       show: true,
                     },
                     {
@@ -808,7 +844,7 @@ export default function Ver() {
                             className="gap-1.5 h-10 px-3 text-sm font-semibold border-orange-500 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40 hover:bg-orange-100 dark:hover:bg-orange-950/60 shadow-sm w-full sm:w-auto"
                           >
                             <PiMedalDuotone className="w-4 h-4 shrink-0" />
-                            Nuevo Líder
+                            Nuevo
                           </Button>
                         ) : undefined,
                       )}
@@ -850,12 +886,41 @@ export default function Ver() {
                             className="gap-1.5 h-10 px-3 text-sm font-semibold border-violet-500 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-100 dark:hover:bg-violet-950/60 shadow-sm w-full sm:w-auto"
                           >
                             <PiBriefcaseDuotone className="w-4 h-4 shrink-0" />
-                            Nuevo Empleado
+                            Nuevo
                           </Button>
                         ) : undefined,
                       )}
                       <Lideres
                         lideres={trabajadores}
+                        onVerCelula={handleOpenCelula}
+                        onEditar={handleOpenEditLiderModal}
+                        rolUsuarioSesion={rolSesionCelula}
+                        onDataChange={refreshAfterDeletion}
+                        searchTerm={searchTerm}
+                        idUsuarioSesion={userId}
+                        isLoading={cargandoLideres}
+                      />
+                    </>
+                  )}
+                  {activeTab === "Planilla" && (
+                    <>
+                      {renderBarraPestana(
+                        puedeVerBotonNuevo ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() =>
+                              handleOpenCreateUsuarioModal("PLANILLA")
+                            }
+                            className="gap-1.5 h-10 px-3 text-sm font-semibold border-rose-500 text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/60 shadow-sm w-full sm:w-auto"
+                          >
+                            <PiListChecksDuotone className="w-4 h-4 shrink-0" />
+                            Nuevo
+                          </Button>
+                        ) : undefined,
+                      )}
+                      <Lideres
+                        lideres={usuariosPlanilla}
                         onVerCelula={handleOpenCelula}
                         onEditar={handleOpenEditLiderModal}
                         rolUsuarioSesion={rolSesionCelula}
@@ -894,7 +959,7 @@ export default function Ver() {
                               className="gap-1.5 h-10 px-3 text-sm font-semibold border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 shadow-sm"
                             >
                               <PiShieldCheckDuotone className="w-4 h-4 shrink-0" />
-                              Nuevo Admin
+                              Nuevo
                             </Button>
                             {puedeCrearRolSuper && (
                               <Button
@@ -906,7 +971,7 @@ export default function Ver() {
                                 className="gap-1.5 h-10 px-3 text-sm font-semibold border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 shadow-sm"
                               >
                                 <PiCodeDuotone className="w-4 h-4 shrink-0" />
-                                Nuevo Super
+                                Nuevo
                               </Button>
                             )}
                           </>

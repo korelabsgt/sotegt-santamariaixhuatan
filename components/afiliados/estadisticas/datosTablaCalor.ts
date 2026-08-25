@@ -35,7 +35,13 @@ export function buildTablaEdades(afiliados: Afiliado[]): TablaCalorData {
     { etiqueta: "Mayores (61+)", min: 61, max: 150, hombres: 0, mujeres: 0 },
   ];
 
+  let totalHombres = 0;
+  let totalMujeres = 0;
+
   afiliados.forEach((af) => {
+    if (af.sexo === "M") totalHombres++;
+    else if (af.sexo === "F") totalMujeres++;
+
     const edad = new Date().getFullYear() - new Date(af.nacimiento).getFullYear();
     const rango = rangos.find((r) => edad >= r.min && edad <= r.max);
     if (!rango) return;
@@ -43,13 +49,21 @@ export function buildTablaEdades(afiliados: Afiliado[]): TablaCalorData {
     else rango.mujeres++;
   });
 
+  const filasRango = rangos.map((r) => ({
+    etiqueta: r.etiqueta,
+    celdas: [r.hombres, r.mujeres, r.hombres + r.mujeres],
+  }));
+
   return {
     titulo: "Distribución por edad y género",
     columnas: ["Hombres", "Mujeres", "Total"],
-    filas: rangos.map((r) => ({
-      etiqueta: r.etiqueta,
-      celdas: [r.hombres, r.mujeres, r.hombres + r.mujeres],
-    })),
+    filas: [
+      {
+        etiqueta: "Total",
+        celdas: [totalHombres, totalMujeres, totalHombres + totalMujeres],
+      },
+      ...filasRango,
+    ],
     nombreArchivo: "estadisticas-edades",
     nombreHoja: "Edades",
   };

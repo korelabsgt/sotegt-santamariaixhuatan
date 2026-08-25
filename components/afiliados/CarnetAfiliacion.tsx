@@ -1,16 +1,53 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogPanel } from "@headlessui/react";
-import { Download, Printer, X } from "lucide-react";
+import { Download, Loader2, Printer, X } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { createClient } from "@/utils/supabase/client";
+import { DPI_PHOTO_ASPECT, dpiPhotoRect } from "@/lib/dpiLayout";
 import type { Afiliado } from "./esquemas";
 import { formatearDpi } from "./contacto";
 import {
   etiquetaEdadNacimiento,
   formatearFechaNacimiento,
 } from "./fechaNacimiento";
+
+const BUCKET_DPIS = "dpis";
+const FOTO_ASPECTO = DPI_PHOTO_ASPECT;
+
+function recortarRetratoDpi(src: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const rect = dpiPhotoRect(img.naturalWidth, img.naturalHeight);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(rect.width));
+      canvas.height = Math.max(1, Math.round(rect.height));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("canvas"));
+        return;
+      }
+      ctx.drawImage(
+        img,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+      resolve(canvas.toDataURL("image/jpeg", 0.92));
+    };
+    img.onerror = () => reject(new Error("imagen"));
+    img.src = src;
+  });
+}
 
 interface Props {
   afiliado: Afiliado | null;
@@ -38,6 +75,50 @@ function etiquetaGenero(sexo: string | null | undefined): string {
   if (sexo === "M") return "Masculino";
   if (sexo === "F") return "Femenino";
   return sexo || "—";
+}
+
+function cargarImagen(src: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(src);
+    img.onerror = () => reject(new Error("imagen"));
+    img.src = src;
+  });
+}
+
+async function resolverLogo(): Promise<string> {
+  try {
+    return await cargarImagen(LOGO_SEDE_URL);
+  } catch {
+    return cargarImagen(LOGO_FALLBACK_URL);
+  }
+}
+
+function CarnetSkeleton() {
+  return (
+    <div
+      className="relative w-full max-w-[400px] overflow-hidden rounded-none border-[1.5px] border-[#1d4ed8]/40 bg-white"
+      style={{ aspectRatio: "85.6 / 53.98" }}
+      aria-hidden
+    >
+      <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-slate-50 to-slate-100" />
+      <div className="absolute right-3 top-3 h-[4.5rem] w-[4.5rem] animate-pulse rounded bg-slate-200/90" />
+      <div
+        className="absolute bottom-3 right-3 w-[24%] animate-pulse rounded bg-slate-200/90"
+        style={{ aspectRatio: String(FOTO_ASPECTO) }}
+      />
+      <div className="absolute left-3 top-3 h-4 w-[72%] animate-pulse rounded bg-slate-200/90" />
+      <div className="absolute left-3 top-10 h-3 w-[55%] animate-pulse rounded bg-slate-200/70" />
+      <div className="absolute left-3 top-[3.1rem] flex gap-4">
+        <div className="h-8 w-14 animate-pulse rounded bg-slate-200/70" />
+        <div className="h-8 w-16 animate-pulse rounded bg-slate-200/70" />
+        <div className="h-8 w-12 animate-pulse rounded bg-slate-200/70" />
+      </div>
+      <div className="absolute left-3 top-[5.1rem] h-8 w-[40%] animate-pulse rounded bg-slate-200/70" />
+      <div className="absolute inset-x-0 bottom-0 h-[17%] animate-pulse bg-blue-200/50" />
+    </div>
+  );
 }
 
 function OndaCarnet({ className = "" }: { className?: string }) {
@@ -89,10 +170,73 @@ function OndaCarnet({ className = "" }: { className?: string }) {
 
 export default function CarnetAfiliacion({ afiliado, open, onClose }: Props) {
   const [generando, setGenerando] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [recursosListos, setRecursosListos] = useState(false);
   const [logoSrc, setLogoSrc] = useState(LOGO_SEDE_URL);
+  const [fotoSrc, setFotoSrc] = useState<string | null>(null);
   const carnetRef = useRef<HTMLDivElement>(null);
+  const supabase = useMemo(() => createClient(), []);
 
-  if (!afiliado) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !afiliado) {
+      setRecursosListos(false);
+      setFotoSrc(null);
+      setLogoSrc(LOGO_SEDE_URL);
+      return;
+    }
+
+    let cancelled = false;
+    setRecursosListos(false);
+    setFotoSrc(null);
+
+    const cargar = async () => {
+      const logo = await resolverLogo();
+      if (cancelled) return;
+
+      let foto: string | null = null;
+      if (afiliado.dpi_frontal_url) {
+        const { data, error } = await supabase.storage
+          .from(BUCKET_DPIS)
+          .createSignedUrl(afiliado.dpi_frontal_url, 60 * 10);
+        if (!error && data?.signedUrl) {
+          try {
+            foto = await recortarRetratoDpi(data.signedUrl);
+          } catch {
+            try {
+              foto = await cargarImagen(data.signedUrl);
+            } catch {
+              foto = null;
+            }
+          }
+        }
+      }
+
+      if (cancelled) return;
+      setLogoSrc(logo);
+      setFotoSrc(foto);
+      setRecursosListos(true);
+    };
+
+    void cargar();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, afiliado?.id, afiliado?.dpi_frontal_url, supabase, afiliado]);
+
+  if (!afiliado || !mounted || !open) return null;
 
   const nombreCompleto = `${afiliado.nombres} ${afiliado.apellidos}`.trim();
   const palabrasNombre = nombreCompleto.split(/\s+/).filter(Boolean).length;
@@ -330,27 +474,33 @@ export default function CarnetAfiliacion({ afiliado, open, onClose }: Props) {
     }
   };
 
-  return (
-    <Dialog open={open} onClose={onClose} className="relative z-[60]">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" aria-hidden="true" />
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <DialogPanel className="w-full max-w-lg overflow-hidden rounded-xl border bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="flex items-center justify-between border-b px-4 py-3 dark:border-neutral-800">
-            <h3 className="text-sm font-bold uppercase text-gray-900 dark:text-gray-100">
-              Carnet de Afiliación
-            </h3>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              className="h-9 w-9 rounded-full"
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
+  const panel = (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/70"
+        onClick={onClose}
+        aria-hidden
+      />
+      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex items-center justify-between border-b px-4 py-3 dark:border-neutral-800">
+          <h3 className="text-sm font-bold uppercase text-gray-900 dark:text-gray-100">
+            Carnet de Afiliación
+          </h3>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-9 w-9 rounded-full"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
 
-          <div className="flex flex-col items-center gap-5 bg-white p-4 md:p-6 dark:bg-neutral-900">
+        <div className="flex flex-col items-center gap-5 bg-white p-4 md:p-6 dark:bg-neutral-900">
+          {!recursosListos ? (
+            <CarnetSkeleton />
+          ) : (
             <div
               ref={carnetRef}
               className="relative w-full max-w-[400px] overflow-hidden rounded-none border-[1.5px] border-[#1d4ed8] bg-white"
@@ -361,37 +511,40 @@ export default function CarnetAfiliacion({ afiliado, open, onClose }: Props) {
             >
               <OndaCarnet className="absolute inset-0 h-full w-full" />
 
-              <div className="relative z-10 h-[72%] px-3.5 pt-2">
-                <img
-                  src={logoSrc}
-                  alt="CABAL"
-                  crossOrigin="anonymous"
-                  className="pointer-events-none absolute right-2 top-1 z-20 h-[5rem] w-auto object-contain drop-shadow-sm md:h-[5.5rem]"
-                  draggable={false}
-                  onError={() => {
-                    if (logoSrc !== LOGO_FALLBACK_URL) {
-                      setLogoSrc(LOGO_FALLBACK_URL);
-                    }
-                  }}
-                />
+              <img
+                src={logoSrc}
+                alt="CABAL"
+                crossOrigin="anonymous"
+                className="pointer-events-none absolute right-2 top-1 z-30 h-[5.5rem] w-auto object-contain md:right-2.5 md:top-1.5 md:h-[6rem]"
+                draggable={false}
+              />
 
-                <p
-                  className={`relative z-10 w-full whitespace-nowrap pr-16 font-black uppercase leading-none tracking-tight text-gray-900 md:pr-20 ${claseNombre}`}
+              {fotoSrc ? (
+                <div
+                  className="absolute bottom-2 right-2.5 z-30 w-[24%] overflow-hidden rounded-[2px] bg-slate-100 md:right-3"
+                  style={{ aspectRatio: String(FOTO_ASPECTO) }}
                 >
-                  {nombreCompleto}
-                </p>
+                  <img
+                    src={fotoSrc}
+                    alt="Retrato"
+                    className="pointer-events-none h-full w-full object-fill"
+                    draggable={false}
+                  />
+                </div>
+              ) : null}
 
-                <div className="mt-3.5 pr-4">
-                  <div
-                    className={`border-b border-slate-200 pb-2 ${
-                      mismoDpiPadron
-                        ? ""
-                        : "grid grid-cols-2 gap-x-4"
-                    }`}
+              <div className="relative z-10 flex h-full flex-col px-2.5 pt-1.5">
+                <div className="min-w-0 flex-1 pr-[26%]">
+                  <p
+                    className={`whitespace-nowrap font-black uppercase leading-none tracking-tight text-gray-900 ${claseNombre}`}
                   >
+                    {nombreCompleto}
+                  </p>
+
+                  <div className="mt-2.5 space-y-2.5">
                     {mismoDpiPadron ? (
                       <div>
-                        <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">
+                        <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400 md:text-[9px]">
                           DPI y Padrón
                         </p>
                         <p className="mt-0.5 font-mono text-xs font-bold text-gray-900 md:text-sm">
@@ -399,9 +552,9 @@ export default function CarnetAfiliacion({ afiliado, open, onClose }: Props) {
                         </p>
                       </div>
                     ) : (
-                      <>
+                      <div className="flex gap-3">
                         <div>
-                          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">
+                          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400 md:text-[9px]">
                             DPI
                           </p>
                           <p className="mt-0.5 font-mono text-xs font-bold text-gray-900 md:text-sm">
@@ -409,88 +562,92 @@ export default function CarnetAfiliacion({ afiliado, open, onClose }: Props) {
                           </p>
                         </div>
                         <div>
-                          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">
+                          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400 md:text-[9px]">
                             Padrón
                           </p>
                           <p className="mt-0.5 font-mono text-xs font-bold text-gray-900 md:text-sm">
                             {padron}
                           </p>
                         </div>
-                      </>
+                      </div>
                     )}
-                  </div>
 
-                  <div className="grid grid-cols-3 gap-x-3 border-b border-slate-200 py-2">
-                    <div>
-                      <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">
-                        Género
-                      </p>
-                      <p className="mt-0.5 text-xs font-bold text-gray-900 md:text-sm">
-                        {genero}
-                      </p>
+                    <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                      <div>
+                        <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400 md:text-[9px]">
+                          Género
+                        </p>
+                        <p className="mt-0.5 text-xs font-bold text-gray-900 md:text-sm">
+                          {genero}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400 md:text-[9px]">
+                          Nacimiento
+                        </p>
+                        <p className="mt-0.5 text-xs font-bold text-gray-900 md:text-sm">
+                          {fechaNac}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400 md:text-[9px]">
+                          Edad
+                        </p>
+                        <p className="mt-0.5 text-xs font-bold text-gray-900 md:text-sm">
+                          {edad}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">
-                        Nacimiento
-                      </p>
-                      <p className="mt-0.5 text-xs font-bold text-gray-900 md:text-sm">
-                        {fechaNac}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">
-                        Edad
-                      </p>
-                      <p className="mt-0.5 text-xs font-bold text-gray-900 md:text-sm">
-                        {edad}
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="pt-2">
-                    <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">
-                      Lugar
-                    </p>
-                    <p className="mt-0.5 text-xs font-bold text-gray-900 md:text-sm">
-                      {lugar}
-                    </p>
+                    <div className="pr-[26%]">
+                      <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400 md:text-[9px]">
+                        Lugar
+                      </p>
+                      <p className="mt-0.5 text-xs font-bold text-gray-900 md:text-sm">
+                        {lugar}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="absolute bottom-1 right-3 z-20 text-right md:bottom-1.5 md:right-3.5">
-                <p className="text-xs font-black uppercase leading-tight tracking-wide text-white md:text-sm">
-                  Carnet de
-                  <br />
-                  Afiliación
+              <div className="absolute bottom-1.5 left-2.5 z-20 md:bottom-2 md:left-3">
+                <p className="text-xs font-black italic uppercase leading-tight tracking-wide text-white md:text-sm">
+                  Carnet de Afiliación
                 </p>
               </div>
             </div>
+          )}
 
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={imprimir}
-                disabled={generando}
-                className="hidden w-full border-blue-300 text-blue-800 hover:bg-blue-50 sm:inline-flex sm:w-auto"
-              >
-                <Printer className="mr-2 h-4 w-4" />
-                {generando ? "Preparando..." : "Imprimir"}
-              </Button>
-              <Button
-                type="button"
-                onClick={descargarImagen}
-                disabled={generando}
-                className="w-full bg-blue-700 hover:bg-blue-800 sm:w-auto"
-              >
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={imprimir}
+              disabled={generando || !recursosListos}
+              className="hidden w-full border-blue-300 text-blue-800 hover:bg-blue-50 sm:inline-flex sm:w-auto"
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              {generando ? "Preparando..." : "Imprimir"}
+            </Button>
+            <Button
+              type="button"
+              onClick={descargarImagen}
+              disabled={generando || !recursosListos}
+              className="w-full bg-blue-700 hover:bg-blue-800 sm:w-auto"
+            >
+              {generando ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
                 <Download className="mr-2 h-4 w-4" />
-                {generando ? "Generando..." : "Descargar imagen"}
-              </Button>
-            </div>
+              )}
+              {generando ? "Generando..." : "Descargar imagen"}
+            </Button>
           </div>
-        </DialogPanel>
+        </div>
       </div>
-    </Dialog>
+    </div>
   );
+
+  return createPortal(panel, document.body);
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { Afiliado, Lider } from "./esquemas";
-import { esRolEmpleado, esUsuarioSede } from "./esquemas";
+import { esRolEmpleado, esRolPlanilla, esUsuarioSede } from "./esquemas";
 import Tabla from "./Tabla";
 import EstadisticasTabs from "./estadisticas/EstadisticasTabs";
 import TextoAnimado from "@/components/ui/Typeanimation";
@@ -29,6 +29,7 @@ import type { FormatoVista } from "./Tabla";
 
 function etiquetaRolCelula(lider: Lider): string {
   if (esRolEmpleado(lider.rol)) return "Empleado";
+  if (esRolPlanilla(lider.rol)) return "Planilla";
   if (esUsuarioSede(lider)) return "Sede";
   return "Líder";
 }

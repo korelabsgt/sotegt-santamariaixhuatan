@@ -140,7 +140,7 @@ export default function GestionDpiModal({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="fixed inset-0 bg-black/60" />
         </TransitionChild>
 
         <div className="fixed inset-0 flex items-center justify-center p-0 sm:p-6">
@@ -186,6 +186,7 @@ export default function GestionDpiModal({
                         bucketName={BUCKET}
                         currentImagePath={frontalPath}
                         enableImageLoupe
+                        captureOverlay="front"
                         onUploadSuccess={async (newPath) => {
                           await mutation.mutateAsync({
                             campo: "dpi_frontal_url",
@@ -208,6 +209,7 @@ export default function GestionDpiModal({
                         bucketName={BUCKET}
                         currentImagePath={reversoPath}
                         enableImageLoupe
+                        captureOverlay="back"
                         onUploadSuccess={async (newPath) => {
                           await mutation.mutateAsync({
                             campo: "dpi_reverso_url",

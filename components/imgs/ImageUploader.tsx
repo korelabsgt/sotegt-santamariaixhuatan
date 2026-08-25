@@ -9,6 +9,8 @@ import { toast } from "@/lib/toast";
 import { createClient } from "@/utils/supabase/client";
 
 import ImageEditorModal from "./ImageEditorModal";
+import DpiCameraCapture from "./DpiCameraCapture";
+import type { DpiSide } from "@/lib/dpiLayout";
 
 const IMAGE_LOUPE_SCALE = 2.65;
 const IMAGE_LOUPE_LEN = 168;
@@ -175,6 +177,7 @@ interface Props {
   signedUrlExpiresIn?: number;
   enableImageLoupe?: boolean;
   label?: string;
+  captureOverlay?: DpiSide;
 }
 
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
@@ -193,6 +196,7 @@ export default function ImageUploader({
   signedUrlExpiresIn = 60 * 60,
   enableImageLoupe = false,
   label,
+  captureOverlay,
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -202,6 +206,7 @@ export default function ImageUploader({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [editingFile, setEditingFile] = useState<File | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +256,10 @@ export default function ImageUploader({
 
   const triggerCamera = () => {
     if (isLocked) return;
+    if (captureOverlay) {
+      setCameraOpen(true);
+      return;
+    }
     cameraRef.current?.click();
   };
 
@@ -366,7 +375,7 @@ export default function ImageUploader({
 
       {currentImagePath ? (
         <div className="flex flex-col">
-          <div className="group relative flex min-h-[160px] max-h-[260px] w-full items-center justify-center overflow-hidden rounded-lg border border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800/60">
+          <div className="group relative flex min-h-[160px] max-h-[260px] w-full items-center justify-center overflow-hidden rounded-lg border border-gray-200 dark:border-neutral-700 bg-white">
             {previewLoading ? (
               <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400" />
             ) : previewUrl ? (
@@ -437,7 +446,23 @@ export default function ImageUploader({
         file={editingFile}
         onConfirm={uploadEditedFile}
         onCancel={() => setEditingFile(null)}
+        dpiOverlay={captureOverlay ?? null}
       />
+      {captureOverlay && (
+        <DpiCameraCapture
+          open={cameraOpen}
+          lado={captureOverlay}
+          onCapture={(file) => {
+            setCameraOpen(false);
+            setEditingFile(file);
+          }}
+          onClose={() => setCameraOpen(false)}
+          onFallback={() => {
+            setCameraOpen(false);
+            cameraRef.current?.click();
+          }}
+        />
+      )}
     </div>
   );
 }

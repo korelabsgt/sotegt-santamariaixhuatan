@@ -43,7 +43,13 @@ export default function Edades({ afiliados }: Props) {
     { name: "Mayores (61+)", min: 61, max: 150, hombres: 0, mujeres: 0 },
   ];
 
+  let totalHombres = 0;
+  let totalMujeres = 0;
+
   afiliados.forEach((af) => {
+    if (af.sexo === "M") totalHombres++;
+    else if (af.sexo === "F") totalMujeres++;
+
     const nacimiento = new Date(af.nacimiento);
     const edad = new Date().getFullYear() - nacimiento.getFullYear();
     const rango = rangos.find((r) => edad >= r.min && edad <= r.max);
@@ -52,6 +58,11 @@ export default function Edades({ afiliados }: Props) {
       else rango.mujeres++;
     }
   });
+
+  const datos = [
+    { name: "Total", hombres: totalHombres, mujeres: totalMujeres },
+    ...rangos,
+  ];
 
   return (
     <div className="w-full h-full flex flex-col">
@@ -67,7 +78,7 @@ export default function Edades({ afiliados }: Props) {
 
       <div className="flex-1 w-full min-h-[280px] overflow-x-auto overflow-y-hidden pb-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent">
         <ResponsiveContainer width="100%" height="100%" minHeight={280}>
-          <BarChart data={rangos} margin={{ top: 24, right: 12, left: -12, bottom: 8 }}>
+          <BarChart data={datos} margin={{ top: 24, right: 12, left: -12, bottom: 8 }}>
             <defs>
               <linearGradient id={gradHombres} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#3b82f6" stopOpacity={1} />

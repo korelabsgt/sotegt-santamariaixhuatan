@@ -44,6 +44,8 @@ export const getCroppedFile = async (
     const rotatedCtx = rotatedCanvas.getContext("2d");
     if (!rotatedCtx) throw new Error("No se pudo crear el canvas.");
 
+    rotatedCtx.fillStyle = "#ffffff";
+    rotatedCtx.fillRect(0, 0, bBoxW, bBoxH);
     rotatedCtx.translate(bBoxW / 2, bBoxH / 2);
     rotatedCtx.rotate(rotRad);
     rotatedCtx.translate(-image.width / 2, -image.height / 2);
@@ -55,6 +57,8 @@ export const getCroppedFile = async (
     const croppedCtx = croppedCanvas.getContext("2d");
     if (!croppedCtx) throw new Error("No se pudo crear el canvas final.");
 
+    croppedCtx.fillStyle = "#ffffff";
+    croppedCtx.fillRect(0, 0, pixelCrop.width, pixelCrop.height);
     croppedCtx.drawImage(
       rotatedCanvas,
       pixelCrop.x,

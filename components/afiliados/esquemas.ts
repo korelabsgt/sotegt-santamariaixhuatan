@@ -39,6 +39,10 @@ export function esRolEmpleado(rol?: string | null) {
   return r === "EMPLEADO" || r === "TRABAJADOR";
 }
 
+export function esRolPlanilla(rol?: string | null) {
+  return (rol || "").toUpperCase() === "PLANILLA";
+}
+
 export const POLITICAS = [
   "Obras de Infraestructura",
   "Red Vial",

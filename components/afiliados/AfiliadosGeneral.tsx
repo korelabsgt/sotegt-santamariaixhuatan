@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Building2,
   Briefcase,
+  ClipboardList,
   Download,
   Medal,
   Users,
@@ -12,7 +13,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import * as XLSX from "xlsx";
 import type { Afiliado, Lider } from "./esquemas";
-import { esUsuarioSede } from "./esquemas";
+import { esRolEmpleado, esRolPlanilla, esUsuarioSede } from "./esquemas";
 import { formatearDpi, TelefonoInline } from "./contacto";
 import { etiquetaEdadNacimiento } from "./fechaNacimiento";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ interface Props {
   isLoading?: boolean;
 }
 
-type GrupoTipo = "todos" | "sede" | "lider" | "trabajador";
+type GrupoTipo = "todos" | "sede" | "lider" | "trabajador" | "planilla";
 
 type GrupoAfiliados = {
   lider: Lider;
@@ -61,6 +62,15 @@ const CATEGORIAS: Array<{
     rowActive: "bg-blue-50 dark:bg-blue-950/40",
   },
   {
+    tipo: "planilla",
+    titulo: "Planilla",
+    icon: ClipboardList,
+    active:
+      "bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-200/50 dark:shadow-none",
+    idle: "bg-white dark:bg-neutral-900 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/40",
+    rowActive: "bg-rose-50 dark:bg-rose-950/30",
+  },
+  {
     tipo: "lider",
     titulo: "Líderes",
     icon: Medal,
@@ -80,20 +90,17 @@ const CATEGORIAS: Array<{
   },
 ];
 
-function esRolEmpleado(rol: string | null | undefined) {
-  const r = (rol || "").toUpperCase();
-  return r === "EMPLEADO" || r === "TRABAJADOR";
-}
-
 function tipoDeLider(lider: Lider): Exclude<GrupoTipo, "todos"> {
   if (esUsuarioSede(lider)) return "sede";
   if (esRolEmpleado(lider.rol)) return "trabajador";
+  if (esRolPlanilla(lider.rol)) return "planilla";
   return "lider";
 }
 
 function etiquetaGrupo(tipo: Exclude<GrupoTipo, "todos">) {
   if (tipo === "sede") return "Sede";
   if (tipo === "trabajador") return "Empleado";
+  if (tipo === "planilla") return "Planilla";
   return "Líder";
 }
 
@@ -199,6 +206,14 @@ export default function AfiliadosGeneral({
         });
         return;
       }
+      if (esRolPlanilla(rol)) {
+        result.push({
+          lider,
+          afiliados: grouped.get(lider.id) || [],
+          tipo: "planilla",
+        });
+        return;
+      }
       if (rol === "LIDER") {
         result.push({
           lider,
@@ -222,6 +237,7 @@ export default function AfiliadosGeneral({
       sede: 0,
       lider: 0,
       trabajador: 0,
+      planilla: 0,
     };
     grupos.forEach((g) => {
       map[g.tipo] += g.afiliados.length;
@@ -276,6 +292,7 @@ export default function AfiliadosGeneral({
       sede: [] as ReturnType<typeof filaExcel>[],
       lider: [] as ReturnType<typeof filaExcel>[],
       trabajador: [] as ReturnType<typeof filaExcel>[],
+      planilla: [] as ReturnType<typeof filaExcel>[],
     };
 
     grupos.forEach((g) => {
@@ -292,7 +309,12 @@ export default function AfiliadosGeneral({
       });
     });
 
-    const todos = [...porTipo.sede, ...porTipo.lider, ...porTipo.trabajador].sort(
+    const todos = [
+      ...porTipo.sede,
+      ...porTipo.lider,
+      ...porTipo.trabajador,
+      ...porTipo.planilla,
+    ].sort(
       (a, b) => compararNombres(a.Nombre, b.Nombre),
     );
 
@@ -306,6 +328,11 @@ export default function AfiliadosGeneral({
       wb,
       XLSX.utils.json_to_sheet(porTipo.sede),
       "Sede",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(porTipo.planilla),
+      "Planilla",
     );
     XLSX.utils.book_append_sheet(
       wb,
